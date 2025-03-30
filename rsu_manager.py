@@ -1,6 +1,4 @@
-
 from geopy.distance import geodesic
-
 
 "Diclamer!"
 """
