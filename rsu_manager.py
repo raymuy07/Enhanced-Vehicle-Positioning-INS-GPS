@@ -22,7 +22,7 @@ class RSUManager:
         """Attributes of the RSUManager class"""
         self.rsu_locations = rsu_grid
         self.reception_radius = reception_radius
-        self.vehicle_proximity = {step: {rsu_index: [] for rsu_index in range(len(rsu_locations))} for step in
+        self.vehicle_proximity = {step: {rsu_index: [] for rsu_index in range(len(self.rsu_locations))} for step in
                                   range(100)}  # Assuming 100 steps for simplicity
 
 

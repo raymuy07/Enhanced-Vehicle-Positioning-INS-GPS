@@ -1,5 +1,5 @@
 
-
+import numpy as np
 from utility_functions import add_gps_error_and_precision, add_communication_distance_error, calculate_distance, trilaterate_gps, calculate_weighted_position
 
 class VehicleTracker:
