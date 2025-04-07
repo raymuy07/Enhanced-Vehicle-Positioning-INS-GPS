@@ -20,10 +20,11 @@ class Vehicle:
 
     def __init__(self, vehicle_id):
         self.id = vehicle_id
-        self.history = []  # Will store PositionRecord objects
+        self.position_history = []  # Will store PositionRecord objects
 
     def update(self, real_position, speed, step, error_model):
         """Update vehicle with new position data."""
+
         # Generate position with error using the provided error model
         measured_position = error_model.apply_error(real_position)
 
@@ -33,12 +34,12 @@ class Vehicle:
             measured_position=measured_position,
             speed=speed
         )
-        self.history.append(record)
+        self.position_history.append(record)
 
     @property
     def current_record(self):
         """Get the most recent position record."""
-        return self.history[-1] if self.history else None
+        return self.position_history[-1] if self.position_history else None
 
 
 class PositionRecord:

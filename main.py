@@ -1,4 +1,6 @@
 import traci
+
+from manager_classes import GPSErrorModel
 from rsu_manager import RSUManager
 from vehicle_tracker import VehicleTracker
 
@@ -27,11 +29,13 @@ def run_simulation():
         simulation_path="Sumo/High_way/osm.sumocfg"
         simulation_type = 'High_way'
 
+    # TODO add exception if sim is not 1,2,3
+
     print(simulation_type)
 
     rsu_manager = RSUManager(simulation_type, use_RSU, proximity_radius)
 
-
+    error_model = GPSErrorModel(error_std_dev)
 
     vehicle_tracker = VehicleTracker(rsu_manager,specific_car_id,error_std_dev,num_of_neighbors,proximity_radius,better_flag)
 
