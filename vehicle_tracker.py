@@ -41,6 +41,8 @@ class VehicleTracker:
 
     def find_nearby_vehicles_and_check_rsus(self, vehicle_ids, step):
         # Using the real position ONLY in order to calculate the real distances
+        #it gives a list of vehicles and step.
+
         specific_car_position = self.vehicle_data[self.specific_car_id]['real_positions'][-1] if self.specific_car_id in self.vehicle_data else None
         if specific_car_position is None:
             return  # If the specific car's position is not known, skip the check
@@ -51,7 +53,7 @@ class VehicleTracker:
 
         # Iterate over RSUs
         for rsu_index, rsu_position in enumerate(self.rsu_manager.rsu_locations):
-            distance_to_rsu = calculate_distance(specific_car_position, rsu_position)
+            distance_to_rsu = calculate_distance(specific_car_position, rsu_position) ##real car position
             if distance_to_rsu <= self.proximity_radius:
                 self.trilateration_data[step][0].append(rsu_position)
                 self.trilateration_data[step][1].append(distance_to_rsu)
