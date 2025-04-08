@@ -1,5 +1,7 @@
 import numpy as np
-from core_classes import Position
+import traci
+
+from core_classes import Position, RSU, Vehicle
 
 
 class ErrorModel:
@@ -71,6 +73,7 @@ class TriangulationEstimator(PositionEstimator):
         return estimated_position, is_better
 
     def _gather_reference_points(self, target_vehicle, all_vehicles, rsus, step):
+
         # Logic to gather reference points from nearby vehicles and RSUs
         positions, distances, precision_radii = [], [], []
 
@@ -128,9 +131,11 @@ class TriangulationEstimator(PositionEstimator):
 class SimulationManager:
     """Manages the overall simulation."""
 
-    def __init__(self, simulation_config, error_model, estimator):
-        self.config = simulation_config
-        self.error_model = error_model
+    def __init__(self, simulation_type, gps_error_model_std, estimator = None):
+
+        self.rsu_object = []
+        self.simulation_type = simulation_type
+        self.gps_error_model = GPSErrorModel(gps_error_model_std)
         self.estimator = estimator
         self.vehicles = {}
         self.rsus = []
@@ -140,54 +145,31 @@ class SimulationManager:
             'errors': []
         }
 
-    def initialize_rsus(self, rsu_positions):
+    def initialize_rsus(self,rsu_flag,rsu_proximity_radius):
         """Initialize RSUs at specified positions."""
-        for idx, position in enumerate(rsu_positions):
-            rsu = RSU(f"rsu_{idx}", Position(position[0], position[1]))
-            self.rsus.append(rsu)
+        self.rsu_object = RSU(self.simulation_type, rsu_flag, rsu_proximity_radius)
 
     def update_vehicle(self, vehicle_id, geo_position, speed, step):
         """Update or create a vehicle with new data."""
+
+        # Create or update vehicle
         if vehicle_id not in self.vehicles:
             self.vehicles[vehicle_id] = Vehicle(vehicle_id)
+        # Create Position object
+        real_position = Position(geo_position[0], geo_position[1])
+        # Update vehicle with new data
+        self.vehicles[vehicle_id].update(real_position, speed, step, self.gps_error_model)
 
-        position = Position(geo_position[0], geo_position[1])
-        self.vehicles[vehicle_id].update(position, speed, step, self.error_model)
 
-    def estimate_positions(self, target_vehicle_id, step):
-        """Estimate positions for a target vehicle."""
-        if target_vehicle_id not in self.vehicles:
-            return None
-
-        target_vehicle = self.vehicles[target_vehicle_id]
-        estimated_position, is_better = self.estimator.estimate_position(
-            target_vehicle, self.vehicles, self.rsus, step)
-
-        # Store result statistics
-        if is_better:
-            self.results['better_values'].append(estimated_position)
-        else:
-            self.results['not_better_values'].append(estimated_position)
-
-        # Calculate error
-        real_pos = target_vehicle.current_record.real_position
-        measured_pos = target_vehicle.current_record.measured_position
-        estimated_pos = estimated_position
-
-        # Calculate errors (could be more sophisticated)
-        gps_error = real_pos.distance_to(measured_pos)
-        estimated_error = real_pos.distance_to(estimated_pos)
-
-        self.results['errors'].append((gps_error, estimated_error))
-
-        return estimated_position
 
     def run_simulation(self, simulation_path, specific_car_id, num_steps):
         """Run the full simulation."""
+
         # Start SUMO
         traci.start(["sumo", "-c", simulation_path])
 
         for step in range(num_steps):
+
             traci.simulationStep()
             vehicle_ids = traci.vehicle.getIDList()
 
@@ -199,10 +181,10 @@ class SimulationManager:
 
                 self.update_vehicle(vehicle_id, geo_position, speed, step)
 
-            # Perform position estimation for the specific car
-            if specific_car_id in vehicle_ids:
-                self.estimate_positions(specific_car_id, step)
-
+            ## TODO Get triangulation estimates
+            """ a replecement for the find_nearby_vehicles_and_check_rsus method should come here and is 
+            partially  implemented in the TriangulationEstimator class
+            """
         # End simulation
         traci.close()
         return self.results

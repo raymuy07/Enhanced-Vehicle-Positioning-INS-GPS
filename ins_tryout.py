@@ -7,7 +7,7 @@ from utility_functions import calculate_distance, add_gps_error_and_precision, e
 from vehicle_tracker import VehicleTracker
 import matplotlib.pyplot as plt
 
-from rsu_manager import RSUManager
+from rsu_manager_deprecated import RSUManager
 
 
 
