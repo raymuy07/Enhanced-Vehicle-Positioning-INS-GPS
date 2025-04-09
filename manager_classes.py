@@ -133,6 +133,7 @@ class SimulationManager:
 
     def __init__(self, simulation_params):
 
+        self.rsu_object = None
         self.simulation_type = simulation_params.get('simulation_type')
         self.gps_error_model = simulation_params.get('gps_error_model')
         #self.estimator = estimator
@@ -140,7 +141,6 @@ class SimulationManager:
         rsu_proximity_radius = simulation_params.get('rsu_proximity_radius', 0)
         rsu_flag = simulation_params.get('rsu_flag', False)
         self.vehicles = {}
-
         self.results = {
             'no_mod_values': [],
             'better_values': [],
@@ -163,8 +163,6 @@ class SimulationManager:
         real_position = Position(geo_position[0], geo_position[1])
         # Update vehicle with new data
         self.vehicles[vehicle_id].update(real_position, speed, step, self.gps_error_model)
-
-
 
     def run_simulation(self, simulation_path, specific_car_id, num_steps):
         """Run the full simulation."""

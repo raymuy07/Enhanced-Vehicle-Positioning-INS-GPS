@@ -35,6 +35,8 @@ class Vehicle:
             real_position=real_position,
             measured_position=measured_position,
             speed=speed
+            ##distance from neghbors?
+            ##duistance from rsu?
         )
         self.position_history.append(record)
 

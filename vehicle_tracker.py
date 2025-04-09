@@ -1,8 +1,10 @@
-
 import numpy as np
+
 from utility_functions import add_gps_error_and_precision, add_communication_distance_error, calculate_distance, trilaterate_gps, calculate_weighted_position
+
+
 class VehicleTracker:
-    def __init__(self, rsu_manager,specific_car_id,error_std_dev,num_of_neighbors,proximity_radius,better_flag):
+    def __init__(self, rsu_manager, specific_car_id, error_std_dev, num_of_neighbors, proximity_radius, better_flag):
         self.vehicle_data = {}
         self.specific_car_id = specific_car_id
         self.rsu_manager = rsu_manager
@@ -41,7 +43,7 @@ class VehicleTracker:
 
     def find_nearby_vehicles_and_check_rsus(self, vehicle_ids, step):
         # Using the real position ONLY in order to calculate the real distances
-        #it gives a list of vehicles and step.
+        # it gives a list of vehicles and step.
 
         specific_car_position = self.vehicle_data[self.specific_car_id]['real_positions'][-1] if self.specific_car_id in self.vehicle_data else None
         if specific_car_position is None:
@@ -77,7 +79,6 @@ class VehicleTracker:
                 self.trilateration_data[step][0].append(other_geo_position)
                 self.trilateration_data[step][1].append(perturbed_distance)
                 self.trilateration_data[step][2].append(precision_radius)
-
 
     def select_positions_for_triangulation(self, positions_distances_radii,step):
         # Sort positions by precision radius (ascending), so the best precision is first
