@@ -9,14 +9,21 @@ from manager_classes import GPSErrorModel, SimulationManager
 if __name__ == "__main__":
 
     # Simulation parameters
-    num_of_neighbors = 8
-    number_of_steps = 600
+    simulation_params = {
+        'num_of_neighbors': 8,
+        'number_of_steps': 600,
+        'gps_error_model_std': 8,  # 5 - standard std, 10 - very bad sat con
+        'rsu_proximity_radius': 300,
+        'rsu_flag': True
+    }
 
-    gps_error_model_std = 8  # 5 - standard std, 10 - very bad sat con
-    rsu_proximity_radius = 300
-    rsu_flag = True
 
-    ##TODO switch it to more dynamic method
+    #initialize the GPS error model
+    gps_error_model = GPSErrorModel(simulation_params['gps_error_model_std'])
+
+   ##delay = DelayModel() #they values we want
+
+   ##TODO switch it to more dynamic method
     specific_car_id = "veh1"
 
     # TODO find more pythonic way to do this
@@ -43,8 +50,7 @@ if __name__ == "__main__":
 
 
 
-    simulation_manager = SimulationManager(simulation_type,gps_error_model_std)
-    simulation_manager.initialize_rsus(rsu_flag,rsu_proximity_radius)
+    simulation_manager = SimulationManager(simulation_params)
 
     ##TODO change the specific_car_id method to be more dynamic
     simulation_manager.run_simulation(simulation_path, specific_car_id, number_of_steps)
