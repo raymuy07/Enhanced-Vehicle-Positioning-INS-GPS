@@ -65,10 +65,10 @@ it was taken from the previous project and modified to fit the current project
 
 
 class RSU:
-    def __init__(self, simulation_type, use_RSU, reception_radius):
+    def __init__(self, simulation_type, rsu_flag, reception_radius):
 
         rsu_points = rsu_points_by_simulation.get(simulation_type)
-        if use_RSU:
+        if rsu_flag:
             rsu_grid = self.generate_rsu_grid(*rsu_points)
         else:
             rsu_grid = []

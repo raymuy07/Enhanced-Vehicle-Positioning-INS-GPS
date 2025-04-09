@@ -131,19 +131,23 @@ class TriangulationEstimator(PositionEstimator):
 class SimulationManager:
     """Manages the overall simulation."""
 
-    def __init__(self, simulation_type, gps_error_model_std, estimator = None):
+    def __init__(self, simulation_params):
 
-        self.rsu_object = []
-        self.simulation_type = simulation_type
-        self.gps_error_model = GPSErrorModel(gps_error_model_std)
-        self.estimator = estimator
+        self.simulation_type = simulation_params.get('simulation_type')
+        self.gps_error_model = simulation_params.get('gps_error_model')
+        #self.estimator = estimator
+        self.num_of_neighbors = simulation_params.get('num_of_neighbors', 0)
+        rsu_proximity_radius = simulation_params.get('rsu_proximity_radius', 0)
+        rsu_flag = simulation_params.get('rsu_flag', False)
         self.vehicles = {}
-        self.rsus = []
+
         self.results = {
+            'no_mod_values': [],
             'better_values': [],
-            'not_better_values': [],
             'errors': []
         }
+
+        self.initialize_rsus(rsu_flag,rsu_proximity_radius)
 
     def initialize_rsus(self,rsu_flag,rsu_proximity_radius):
         """Initialize RSUs at specified positions."""
@@ -185,6 +189,8 @@ class SimulationManager:
             """ a replecement for the find_nearby_vehicles_and_check_rsus method should come here and is 
             partially  implemented in the TriangulationEstimator class
             """
+
+
         # End simulation
         traci.close()
         return self.results
