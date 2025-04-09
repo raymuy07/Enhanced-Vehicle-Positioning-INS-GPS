@@ -4,6 +4,8 @@ import numpy as np
 from core_classes import RSU, Position, Vehicle
 from manager_classes import GPSErrorModel, SimulationManager
 
+
+
 if __name__ == "__main__":
 
     # Simulation parameters
@@ -15,17 +17,20 @@ if __name__ == "__main__":
         'rsu_flag': True
     }
 
-    # initialize the GPS error model
+
+    #initialize the GPS error model
     gps_error_model = GPSErrorModel(simulation_params['gps_error_model_std'])
 
-    # delay = DelayModel() #they values we want
+   ##delay = DelayModel() #they values we want
 
-    # TODO switch it to more dynamic method
+   ##TODO switch it to more dynamic method
     specific_car_id = "veh1"
 
     # TODO find more pythonic way to do this
     better_flag = True  # True if you want to use the better method
     want_print = True  # True if you want to print
+
+    # TODO add exception if sim is not 1,2,3
 
     sim = int(input("1- test line\n2- Loud_City_NY\n3- High_way\n"))
     if sim == 1:
@@ -43,9 +48,13 @@ if __name__ == "__main__":
 
     print(f"Running simulation: {simulation_type}")
 
-    simulation_manager = SimulationManager(simulation_params)
 
-    # TODO change the specific_car_id method to be more dynamic
-    simulation_manager.run_simulation(simulation_path, specific_car_id, simulation_params["number_of_steps"])
 
-    # TODO analyze results and print them
+    simulation_manager = SimulationManager(simulation_params,simulation_type,gps_error_model)
+
+    ##TODO change the specific_car_id method to be more dynamic
+    simulation_manager.run_simulation(simulation_path, specific_car_id)
+
+    ##TODO analyze results and print them
+    ##
+

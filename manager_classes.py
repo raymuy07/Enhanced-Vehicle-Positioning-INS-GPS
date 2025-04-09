@@ -131,16 +131,17 @@ class TriangulationEstimator(PositionEstimator):
 class SimulationManager:
     """Manages the overall simulation."""
 
-    def __init__(self, simulation_params):
+    def __init__(self, simulation_params,simulation_type,gps_error_model):
 
-        self.rsu_object = None
-        self.simulation_type = simulation_params.get('simulation_type')
-        self.gps_error_model = simulation_params.get('gps_error_model')
+        self.simulation_type = simulation_type
+        self.gps_error_model = gps_error_model
         #self.estimator = estimator
+        self.num_steps = simulation_params.get('number_of_steps', 0)
         self.num_of_neighbors = simulation_params.get('num_of_neighbors', 0)
         rsu_proximity_radius = simulation_params.get('rsu_proximity_radius', 0)
         rsu_flag = simulation_params.get('rsu_flag', False)
         self.vehicles = {}
+
         self.results = {
             'no_mod_values': [],
             'better_values': [],
@@ -164,13 +165,45 @@ class SimulationManager:
         # Update vehicle with new data
         self.vehicles[vehicle_id].update(real_position, speed, step, self.gps_error_model)
 
-    def run_simulation(self, simulation_path, specific_car_id, num_steps):
+    def find_neighbours(self, specific_car, all_vehicles):
+
+        # Assuming we've already started a SUMO simulation and connected with TraC
+        # Get the ID of our target vehicle
+
+        ## redundant
+        target_vehicle = specific_car
+
+        # Example 1: Get vehicles to the right and ahead
+        mode = 3  # Binary: 011 (bit 0 and bit 1 are set)
+        right_and_ahead = traci.vehicle.getNeighbors(target_vehicle, mode)
+        print(f"Vehicles to the right and ahead of {target_vehicle}: {right_and_ahead}")
+
+        # Example 2: Get vehicles to the left and behind
+        mode = 0  # Binary: 000 (no bits set)
+        left_and_behind = traci.vehicle.getNeighbors(target_vehicle, mode)
+        print(f"Vehicles to the left and behind {target_vehicle}: {left_and_behind}")
+
+        # Example 3: Get vehicles to the right that are blocking a lane change
+        mode = 5  # Binary: 101 (bit 0 and bit 2 are set)
+        right_blockers = traci.vehicle.getNeighbors(target_vehicle, mode)
+        print(f"Vehicles blocking lane change to the right: {right_blockers}")
+
+        # Example 4: Get all neighboring vehicles ahead (both left and right)
+        # For this we need to make two calls and combine results
+        mode_right_ahead = 3  # Binary: 011
+        mode_left_ahead = 2  # Binary: 010
+        right_ahead = traci.vehicle.getNeighbors(target_vehicle, mode_right_ahead)
+        left_ahead = traci.vehicle.getNeighbors(target_vehicle, mode_left_ahead)
+        all_ahead = right_ahead + left_ahead
+        print(f"All vehicles ahead: {all_ahead}")
+
+    def run_simulation(self, simulation_path, specific_car_id):
         """Run the full simulation."""
 
         # Start SUMO
         traci.start(["sumo", "-c", simulation_path])
 
-        for step in range(num_steps):
+        for step in range(self.num_steps):
 
             traci.simulationStep()
             vehicle_ids = traci.vehicle.getIDList()
@@ -182,6 +215,9 @@ class SimulationManager:
                 speed = traci.vehicle.getSpeed(vehicle_id)
 
                 self.update_vehicle(vehicle_id, geo_position, speed, step)
+
+                self.find_neighbours(specific_car_id,vehicle_ids)
+
 
             ## TODO Get triangulation estimates
             """ a replecement for the find_nearby_vehicles_and_check_rsus method should come here and is 
