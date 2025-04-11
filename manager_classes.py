@@ -1,3 +1,4 @@
+import geopy
 import numpy as np
 import traci
 
@@ -133,12 +134,15 @@ class SimulationManager:
 
     def __init__(self, simulation_params,simulation_type,gps_error_model):
 
+        ##temporary
+        self.neighbor_comparison = {}
+
         self.simulation_type = simulation_type
         self.gps_error_model = gps_error_model
         #self.estimator = estimator
         self.num_steps = simulation_params.get('number_of_steps', 0)
         self.num_of_neighbors = simulation_params.get('num_of_neighbors', 0)
-        rsu_proximity_radius = simulation_params.get('rsu_proximity_radius', 0)
+        self.rsu_proximity_radius = simulation_params.get('rsu_proximity_radius', 0)
         rsu_flag = simulation_params.get('rsu_flag', False)
         self.vehicles = {}
 
@@ -148,7 +152,7 @@ class SimulationManager:
             'errors': []
         }
 
-        self.initialize_rsus(rsu_flag,rsu_proximity_radius)
+        self.initialize_rsus(rsu_flag,self.rsu_proximity_radius)
 
     def initialize_rsus(self,rsu_flag,rsu_proximity_radius):
         """Initialize RSUs at specified positions."""
@@ -165,37 +169,124 @@ class SimulationManager:
         # Update vehicle with new data
         self.vehicles[vehicle_id].update(real_position, speed, step, self.gps_error_model)
 
-    def find_neighbours(self, specific_car, all_vehicles):
 
-        # Assuming we've already started a SUMO simulation and connected with TraC
-        # Get the ID of our target vehicle
+    """TEST START"""
 
-        ## redundant
-        target_vehicle = specific_car
+    # def find_neighbours(self, specific_car, all_vehicles):
+    #
+    #     # Assuming we've already started a SUMO simulation and connected with TraC
+    #     # Get the ID of our target vehicle
+    #
+    #     ## redundant
+    #     target_vehicle = specific_car
+    #
+    #     # Example 1: Get vehicles to the right and ahead
+    #     mode = 3  # Binary: 011 (bit 0 and bit 1 are set)
+    #     right_and_ahead = traci.vehicle.getNeighbors(target_vehicle, mode)
+    #     print(f"Vehicles to the right and ahead of {target_vehicle}: {right_and_ahead}")
+    #
+    #     # Example 2: Get vehicles to the left and behind
+    #     mode = 0  # Binary: 000 (no bits set)
+    #     left_and_behind = traci.vehicle.getNeighbors(target_vehicle, mode)
+    #     print(f"Vehicles to the left and behind {target_vehicle}: {left_and_behind}")
+    #
+    #     # Example 3: Get vehicles to the right that are blocking a lane change
+    #     mode = 5  # Binary: 101 (bit 0 and bit 2 are set)
+    #     right_blockers = traci.vehicle.getNeighbors(target_vehicle, mode)
+    #     print(f"Vehicles blocking lane change to the right: {right_blockers}")
+    #
+    #     # Example 4: Get all neighboring vehicles ahead (both left and right)
+    #     # For this we need to make two calls and combine results
+    #     mode_right_ahead = 3  # Binary: 011
+    #     mode_left_ahead = 2  # Binary: 010
+    #     right_ahead = traci.vehicle.getNeighbors(target_vehicle, mode_right_ahead)
+    #     left_ahead = traci.vehicle.getNeighbors(target_vehicle, mode_left_ahead)
+    #     all_ahead = right_ahead + left_ahead
+    #     print(f"All vehicles ahead: {all_ahead}")
 
-        # Example 1: Get vehicles to the right and ahead
-        mode = 3  # Binary: 011 (bit 0 and bit 1 are set)
-        right_and_ahead = traci.vehicle.getNeighbors(target_vehicle, mode)
-        print(f"Vehicles to the right and ahead of {target_vehicle}: {right_and_ahead}")
+    # Function to find nearby vehicles using the original approach (iterating through all vehicles)
+    def find_neighbours(self, specific_car_id, vehicle_ids):
+        """Find nearby vehicles using both methods for comparison."""
+        step = traci.simulation.getTime()
 
-        # Example 2: Get vehicles to the left and behind
-        mode = 0  # Binary: 000 (no bits set)
-        left_and_behind = traci.vehicle.getNeighbors(target_vehicle, mode)
-        print(f"Vehicles to the left and behind {target_vehicle}: {left_and_behind}")
+        # Skip if we don't have the specific car in the simulation
+        if specific_car_id not in vehicle_ids:
+            return
 
-        # Example 3: Get vehicles to the right that are blocking a lane change
-        mode = 5  # Binary: 101 (bit 0 and bit 2 are set)
-        right_blockers = traci.vehicle.getNeighbors(target_vehicle, mode)
-        print(f"Vehicles blocking lane change to the right: {right_blockers}")
+        # Method 1: Original approach - check all vehicles
+        nearby_original = []
+        specific_car_position = traci.vehicle.getPosition(specific_car_id)
+        specific_car_geo = traci.simulation.convertGeo(specific_car_position[0], specific_car_position[1])
 
-        # Example 4: Get all neighboring vehicles ahead (both left and right)
-        # For this we need to make two calls and combine results
-        mode_right_ahead = 3  # Binary: 011
-        mode_left_ahead = 2  # Binary: 010
-        right_ahead = traci.vehicle.getNeighbors(target_vehicle, mode_right_ahead)
-        left_ahead = traci.vehicle.getNeighbors(target_vehicle, mode_left_ahead)
-        all_ahead = right_ahead + left_ahead
-        print(f"All vehicles ahead: {all_ahead}")
+        for other_id in vehicle_ids:
+            if other_id == specific_car_id:
+                continue
+
+            other_position = traci.vehicle.getPosition(other_id)
+            other_geo = traci.simulation.convertGeo(other_position[0], other_position[1])
+
+            distance = self.calculate_distance(specific_car_geo, other_geo)
+            if distance <= self.rsu_proximity_radius:
+                nearby_original.append(other_id)
+
+        # Method 2: Using SUMO's getNeighbors
+        nearby_sumo = []
+
+        # Get neighbors in all directions
+        left_behind = traci.vehicle.getNeighbors(specific_car_id, 0)
+        right_behind = traci.vehicle.getNeighbors(specific_car_id, 1)
+        left_ahead = traci.vehicle.getNeighbors(specific_car_id, 2)
+        right_ahead = traci.vehicle.getNeighbors(specific_car_id, 3)
+
+        # Combine all neighbors
+        nearby_sumo = list(set(left_behind + right_behind + left_ahead + right_ahead))
+
+        # Filter by distance if needed
+        if self.rsu_proximity_radius < 300:  # Only if we have a specific radius
+            nearby_sumo_filtered = []
+            for other_id in nearby_sumo:
+                other_position = traci.vehicle.getPosition(other_id)
+                other_geo = traci.simulation.convertGeo(other_position[0], other_position[1])
+
+                distance = self.calculate_distance(specific_car_geo, other_geo)
+                if distance <= self.rsu_proximity_radius:
+                    nearby_sumo_filtered.append(other_id)
+            nearby_sumo = nearby_sumo_filtered
+
+        # Store or compare results
+        self.neighbor_comparison[int(step)] = {
+            'original': nearby_original,
+            'sumo': nearby_sumo,
+            'overlap': len(set(nearby_original).intersection(set(nearby_sumo))),
+            'original_only': len(set(nearby_original) - set(nearby_sumo)),
+            'sumo_only': len(set(nearby_sumo) - set(nearby_original))
+        }
+
+        # Print comparison for this step
+        # if True:
+        #     print(f"Step {int(step)}: Original found {len(nearby_original)}, SUMO found {len(nearby_sumo)}")
+        #     print(f"  Overlap: {self.neighbor_comparison[int(step)]['overlap']}")
+        #     print(f"  Original only: {self.neighbor_comparison[int(step)]['original_only']}")
+        #     print(f"  SUMO only: {self.neighbor_comparison[int(step)]['sumo_only']}")
+
+        return nearby_original, nearby_sumo
+
+    def print_neighbor_comparison_summary(self):
+        """Print summary of neighbor detection comparison."""
+        total_original = sum(data['original_only'] + data['overlap'] for data in self.neighbor_comparison.values())
+        total_sumo = sum(data['sumo_only'] + data['overlap'] for data in self.neighbor_comparison.values())
+        total_overlap = sum(data['overlap'] for data in self.neighbor_comparison.values())
+
+        print("\nNeighbor Detection Comparison Summary:")
+        print(f"Total neighbors found by Original method: {total_original}")
+        print(f"Total neighbors found by SUMO method: {total_sumo}")
+        print(f"Total overlap: {total_overlap}")
+        # print(f"Efficiency: Original found {total_original / total_sumo * 100:.1f}% compared to SUMO")
+    def calculate_distance(self, pos1, pos2):
+        """Calculate distance between two geo positions."""
+        # Simple Euclidean distance for demonstration
+        # For real geo coordinates, you'd use haversine formula
+        return geopy.distance.geodesic(pos1, pos2).meters
 
     def run_simulation(self, simulation_path, specific_car_id):
         """Run the full simulation."""
@@ -218,11 +309,12 @@ class SimulationManager:
 
                 self.find_neighbours(specific_car_id,vehicle_ids)
 
+        self.print_neighbor_comparison_summary()
 
-            ## TODO Get triangulation estimates
-            """ a replecement for the find_nearby_vehicles_and_check_rsus method should come here and is 
-            partially  implemented in the TriangulationEstimator class
-            """
+        ## TODO Get triangulation estimates
+        """ a replecement for the find_nearby_vehicles_and_check_rsus method should come here and is 
+        partially  implemented in the TriangulationEstimator class
+        """
 
 
         # End simulation
