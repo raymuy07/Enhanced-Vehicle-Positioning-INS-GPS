@@ -26,7 +26,7 @@ class Vehicle:
         self.position_history = []  # Will store PositionRecord objects
         self.neighbors = {}
 
-    def update(self, real_position, speed, step , neighbors=None):
+    def update(self, real_position, speed, step, nearby_vehicles=None, nearby_rsus=None):
         """Update vehicle with new position data."""
 
         # Generate position with error using the provided error model
@@ -36,7 +36,9 @@ class Vehicle:
             step=step,
             real_position=real_position,
             measured_position=measured_position,
-            speed=speed
+            speed=speed,
+            nearby_vehicles=nearby_vehicles,
+            nearby_rsus=nearby_rsus
         )
         self.position_history.append(record)
 
@@ -54,9 +56,9 @@ class PositionRecord:
         self.real_position = real_position  # Position without error
         self.measured_position = measured_position  # Position with error
         self.speed = speed
-        self.estimated_positions = {}  # Different position estimates, keyed by method name
-        self.nearby_vehicles = nearby_vehicles or []  # List of NeighborRecord or simple dicts
-        self.nearby_rsus = nearby_rsus or []  # List of R
+        self.estimated_positions = {}
+        self.nearby_vehicles = nearby_vehicles or []
+        self.nearby_rsus = nearby_rsus or []
 
 
 

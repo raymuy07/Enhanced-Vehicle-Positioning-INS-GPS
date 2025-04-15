@@ -27,8 +27,8 @@ class GPSErrorModel(ErrorModel):
         error_x = np.random.normal(0, self.std_dev)
         error_y = np.random.normal(0, self.std_dev)
 
-        perturbed_x = position.longitude + error_x
-        perturbed_y = position.latitude + error_y
+        perturbed_x = position[0] + error_x
+        perturbed_y = position[1] + error_y
 
         # Calculate the precision radius (magnitude of error vector)
         precision_radius = np.sqrt(error_x ** 2 + error_y ** 2)
@@ -144,6 +144,7 @@ class SimulationManager:
 
     def __init__(self, simulation_params,simulation_type,gps_error_model,comm_error_model):
 
+        self.main_vehicle_obj = None
         ##temporary
         self.neighbor_comparison = {}
 
@@ -181,10 +182,10 @@ class SimulationManager:
         self.vehicles[vehicle_id].update(real_position, speed, step, self.gps_error_model)
 
 
-    def find_neighbours(self, specific_vehicle,step):
+    def find_neighbours(self,step):
         """Find nearby vehicles using both methods for comparison."""
 
-        specific_car_id = specific_vehicle.id
+        specific_car_id = self.main_vehicle_obj.id
 
         left_behind = traci.vehicle.getNeighbors(specific_car_id, 0)
         right_behind = traci.vehicle.getNeighbors(specific_car_id, 1)
@@ -200,55 +201,17 @@ class SimulationManager:
                 vehicle_id, distance = neighbor_tuple
                 real_world_distance = self.comm_error_model.apply_error(abs(distance))
 
-
-
-                # Use absolute distance and filter immediately
                 if real_world_distance <= self.proximity_radius:
-                    specific_vehicle.neighbors.append((vehicle_id, abs(distance)))
+                    nearby_vehicles.append((vehicle_id, abs(distance)))
+        return nearby_vehicles
 
-        step = traci.simulation.getTime()
 
-        # Using SUMO's getNeighbors
-        nearby_sumo = []
 
-        # Get neighbors in all directions
-        left_behind = traci.vehicle.getNeighbors(specific_car_id, 0)
-        right_behind = traci.vehicle.getNeighbors(specific_car_id, 1)
-        left_ahead = traci.vehicle.getNeighbors(specific_car_id, 2)
-        right_ahead = traci.vehicle.getNeighbors(specific_car_id, 3)
-
-        # Combine all neighbors
-        nearby_sumo = list(set(left_behind + right_behind + left_ahead + right_ahead))
-        if nearby_sumo:
-            print(nearby_sumo)
-        # # Filter by distance if needed
-        # if self.rsu_proximity_radius < 300:  # Only if we have a specific radius
-        #     nearby_sumo_filtered = []
-        #     for other_id in nearby_sumo:
-        #         other_position = traci.vehicle.getPosition(other_id)
-        #         other_geo = traci.simulation.convertGeo(other_position[0], other_position[1])
-        #
-        #         distance = self.calculate_distance(specific_car_geo, other_geo)
-        #         if distance <= self.rsu_proximity_radius:
-        #             nearby_sumo_filtered.append(other_id)
-        #     nearby_sumo = nearby_sumo_filtered
-        #
-        # return nearby_sumo
-
-    def print_neighbor_comparison_summary(self):
-        """Print summary of neighbor detection comparison."""
-        total_original = sum(data['original_only'] + data['overlap'] for data in self.neighbor_comparison.values())
-        total_sumo = sum(data['sumo_only'] + data['overlap'] for data in self.neighbor_comparison.values())
-        total_overlap = sum(data['overlap'] for data in self.neighbor_comparison.values())
-
-        print("\nNeighbor Detection Comparison Summary:")
-        print(f"Total neighbors found by Original method: {total_original}")
-        print(f"Total neighbors found by SUMO method: {total_sumo}")
-        print(f"Total overlap: {total_overlap}")
-        # print(f"Efficiency: Original found {total_original / total_sumo * 100:.1f}% compared to SUMO")
-
-    def run_simulation(self, simulation_path, specific_car_id):
+    def run_simulation(self, simulation_path, main_vehicle_id):
         """Run the full simulation."""
+
+        if main_vehicle_id not in self.vehicles:
+            self.main_vehicle_obj = Vehicle(main_vehicle_id, self.gps_error_model)
 
         # Start SUMO
         traci.start(["sumo", "-c", simulation_path])
@@ -264,12 +227,14 @@ class SimulationManager:
                 cartesian_position = traci.vehicle.getPosition(vehicle_id)
                 speed = traci.vehicle.getSpeed(vehicle_id)
 
-                current_neighbours = self.find_neighbours(vehicle_ids[specific_car_id],step)
+                current_neighbours = self.find_neighbours(step)
+                if current_neighbours:
+                    print(f"Found")
+                    print(current_neighbours)
+                self.main_vehicle_obj.update(cartesian_position, speed, step ,current_neighbours)
 
-                self.update_vehicle(vehicle_id, cartesian_position, speed, step ,current_neighbours)
 
 
-        self.print_neighbor_comparison_summary()
 
         ## TODO Get triangulation estimates
         """ a replecement for the find_nearby_vehicles_and_check_rsus method should come here and is 
