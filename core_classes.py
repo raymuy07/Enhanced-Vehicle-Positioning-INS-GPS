@@ -49,12 +49,14 @@ class Vehicle:
 class PositionRecord:
     """Stores position data for a specific time step."""
 
-    def __init__(self, step, real_position, measured_position, speed):
+    def __init__(self, step, real_position, measured_position, speed, nearby_vehicles=None, nearby_rsus=None):
         self.step = step
         self.real_position = real_position  # Position without error
         self.measured_position = measured_position  # Position with error
         self.speed = speed
         self.estimated_positions = {}  # Different position estimates, keyed by method name
+        self.nearby_vehicles = nearby_vehicles or []  # List of NeighborRecord or simple dicts
+        self.nearby_rsus = nearby_rsus or []  # List of R
 
 
 
