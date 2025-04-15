@@ -13,7 +13,7 @@ if __name__ == "__main__":
         'num_of_neighbors': 8,
         'number_of_steps': 600,
         'gps_error_model_std': 8,  # 5 - standard std, 10 - very bad sat con
-        'rsu_proximity_radius': 300,
+        'proximity_radius': 300,
         'rsu_flag': True
     }
 

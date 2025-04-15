@@ -153,7 +153,7 @@ class SimulationManager:
         #self.estimator = estimator
         self.num_steps = simulation_params.get('number_of_steps', 0)
         self.num_of_neighbors = simulation_params.get('num_of_neighbors', 0)
-        self.rsu_proximity_radius = simulation_params.get('rsu_proximity_radius', 0)
+        self.proximity_radius = simulation_params.get('proximity_radius', 0)
         rsu_flag = simulation_params.get('rsu_flag', False)
         self.vehicles = {}
 
