@@ -2,8 +2,7 @@ import traci
 import numpy as np
 
 from core_classes import RSU, Position, Vehicle
-from manager_classes import GPSErrorModel, SimulationManager
-
+from manager_classes import GPSErrorModel, SimulationManager, CommunicationDistanceErrorModel
 
 
 if __name__ == "__main__":
@@ -13,6 +12,8 @@ if __name__ == "__main__":
         'num_of_neighbors': 8,
         'number_of_steps': 600,
         'gps_error_model_std': 8,  # 5 - standard std, 10 - very bad sat con
+        'communication_error_model_std': 2,
+        'systematic_bias': 0.3,
         'proximity_radius': 300,
         'rsu_flag': True
     }
@@ -20,7 +21,7 @@ if __name__ == "__main__":
 
     #initialize the GPS error model
     gps_error_model = GPSErrorModel(simulation_params['gps_error_model_std'])
-
+    comm_error_model = CommunicationDistanceErrorModel(simulation_params['communication_error_model_std'],simulation_params['systematic_bias'])
    ##delay = DelayModel() #they values we want
 
    ##TODO switch it to more dynamic method
@@ -50,7 +51,7 @@ if __name__ == "__main__":
 
 
 
-    simulation_manager = SimulationManager(simulation_params,simulation_type,gps_error_model)
+    simulation_manager = SimulationManager(simulation_params,simulation_type,gps_error_model,comm_error_model)
 
     ##TODO change the specific_car_id method to be more dynamic
     simulation_manager.run_simulation(simulation_path, specific_car_id)

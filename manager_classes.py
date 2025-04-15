@@ -27,8 +27,8 @@ class GPSErrorModel(ErrorModel):
         error_x = np.random.normal(0, self.std_dev)
         error_y = np.random.normal(0, self.std_dev)
 
-        perturbed_x = position.x + error_x
-        perturbed_y = position.y + error_y
+        perturbed_x = position.longitude + error_x
+        perturbed_y = position.latitude + error_y
 
         # Calculate the precision radius (magnitude of error vector)
         precision_radius = np.sqrt(error_x ** 2 + error_y ** 2)
@@ -39,7 +39,7 @@ class GPSErrorModel(ErrorModel):
 class CommunicationDistanceErrorModel(ErrorModel):
     """Implements a communication-specific distance error model."""
 
-    def __init__(self, std_dev=2, systematic_bias=0.3):
+    def __init__(self, std_dev, systematic_bias):
         self.std_dev = std_dev
         self.systematic_bias = systematic_bias
 
@@ -163,7 +163,7 @@ class SimulationManager:
             'errors': []
         }
 
-        self.initialize_rsus(rsu_flag,self.rsu_proximity_radius)
+        self.initialize_rsus(rsu_flag,self.proximity_radius)
 
     def initialize_rsus(self,rsu_flag,rsu_proximity_radius):
         """Initialize RSUs at specified positions."""
@@ -198,6 +198,8 @@ class SimulationManager:
             for neighbor_tuple in neighbor_set:
                 vehicle_id, distance = neighbor_tuple
                 real_world_distance = self.comm_error_model.apply_error(abs(distance))
+
+
                 # Use absolute distance and filter immediately
                 if real_world_distance <= self.proximity_radius:
                     nearby_vehicles.append((vehicle_id, abs(distance)))

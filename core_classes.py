@@ -23,6 +23,7 @@ class Vehicle:
     def __init__(self, vehicle_id):
         self.id = vehicle_id
         self.position_history = []  # Will store PositionRecord objects
+        self.neighbors = {}
 
     def update(self, real_position, speed, step, error_model):
         """Update vehicle with new position data."""
