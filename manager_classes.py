@@ -23,21 +23,18 @@ class GPSErrorModel(ErrorModel):
     def apply_error(self, position):
         """Apply GPS error to a position."""
 
-        error_in_degrees = self.std_dev / 111320  # 1 degree ≈ 111.32 km at the equator
-        # Add random error to latitude and longitude
-        error_lat = np.random.normal(0, error_in_degrees)
-        error_lon = np.random.normal(0, error_in_degrees)
+        # Add random Gaussian error directly in meters
+        error_x = np.random.normal(0, self.std_dev)
+        error_y = np.random.normal(0, self.std_dev)
 
-        perturbed_lat = position.latitude + error_lat
-        perturbed_lon = position.longitude + error_lon
+        perturbed_x = position.x + error_x
+        perturbed_y = position.y + error_y
 
-        error_magnitude = np.sqrt(error_lat ** 2 + error_lon ** 2) * 111320  # Convert back to meters
-        precision_radius = error_magnitude
+        # Calculate the precision radius (magnitude of error vector)
+        precision_radius = np.sqrt(error_x ** 2 + error_y ** 2)
 
         # Create and return a new Position object with the perturbed coordinates
-        return Position(perturbed_lat, perturbed_lon, precision_radius)
-
-
+        return Position(perturbed_x, perturbed_y, precision_radius)
 
 
 class PositionEstimator:
@@ -158,14 +155,14 @@ class SimulationManager:
         """Initialize RSUs at specified positions."""
         self.rsu_object = RSU(self.simulation_type, rsu_flag, rsu_proximity_radius)
 
-    def update_vehicle(self, vehicle_id, geo_position, speed, step):
+    def update_vehicle(self, vehicle_id, cartesian_position, speed, step):
         """Update or create a vehicle with new data."""
 
         # Create or update vehicle
         if vehicle_id not in self.vehicles:
             self.vehicles[vehicle_id] = Vehicle(vehicle_id)
         # Create Position object
-        real_position = Position(geo_position[0], geo_position[1])
+        real_position = Position(cartesian_position[0], cartesian_position[1])
         # Update vehicle with new data
         self.vehicles[vehicle_id].update(real_position, speed, step, self.gps_error_model)
 
@@ -209,27 +206,7 @@ class SimulationManager:
         """Find nearby vehicles using both methods for comparison."""
         step = traci.simulation.getTime()
 
-        # Skip if we don't have the specific car in the simulation
-        if specific_car_id not in vehicle_ids:
-            return
-
-        # Method 1: Original approach - check all vehicles
-        nearby_original = []
-        specific_car_position = traci.vehicle.getPosition(specific_car_id)
-        specific_car_geo = traci.simulation.convertGeo(specific_car_position[0], specific_car_position[1])
-
-        for other_id in vehicle_ids:
-            if other_id == specific_car_id:
-                continue
-
-            other_position = traci.vehicle.getPosition(other_id)
-            other_geo = traci.simulation.convertGeo(other_position[0], other_position[1])
-
-            distance = self.calculate_distance(specific_car_geo, other_geo)
-            if distance <= self.rsu_proximity_radius:
-                nearby_original.append(other_id)
-
-        # Method 2: Using SUMO's getNeighbors
+        # Using SUMO's getNeighbors
         nearby_sumo = []
 
         # Get neighbors in all directions
@@ -240,36 +217,21 @@ class SimulationManager:
 
         # Combine all neighbors
         nearby_sumo = list(set(left_behind + right_behind + left_ahead + right_ahead))
-
-        # Filter by distance if needed
-        if self.rsu_proximity_radius < 300:  # Only if we have a specific radius
-            nearby_sumo_filtered = []
-            for other_id in nearby_sumo:
-                other_position = traci.vehicle.getPosition(other_id)
-                other_geo = traci.simulation.convertGeo(other_position[0], other_position[1])
-
-                distance = self.calculate_distance(specific_car_geo, other_geo)
-                if distance <= self.rsu_proximity_radius:
-                    nearby_sumo_filtered.append(other_id)
-            nearby_sumo = nearby_sumo_filtered
-
-        # Store or compare results
-        self.neighbor_comparison[int(step)] = {
-            'original': nearby_original,
-            'sumo': nearby_sumo,
-            'overlap': len(set(nearby_original).intersection(set(nearby_sumo))),
-            'original_only': len(set(nearby_original) - set(nearby_sumo)),
-            'sumo_only': len(set(nearby_sumo) - set(nearby_original))
-        }
-
-        # Print comparison for this step
-        # if True:
-        #     print(f"Step {int(step)}: Original found {len(nearby_original)}, SUMO found {len(nearby_sumo)}")
-        #     print(f"  Overlap: {self.neighbor_comparison[int(step)]['overlap']}")
-        #     print(f"  Original only: {self.neighbor_comparison[int(step)]['original_only']}")
-        #     print(f"  SUMO only: {self.neighbor_comparison[int(step)]['sumo_only']}")
-
-        return nearby_original, nearby_sumo
+        if nearby_sumo:
+            print(nearby_sumo)
+        # # Filter by distance if needed
+        # if self.rsu_proximity_radius < 300:  # Only if we have a specific radius
+        #     nearby_sumo_filtered = []
+        #     for other_id in nearby_sumo:
+        #         other_position = traci.vehicle.getPosition(other_id)
+        #         other_geo = traci.simulation.convertGeo(other_position[0], other_position[1])
+        #
+        #         distance = self.calculate_distance(specific_car_geo, other_geo)
+        #         if distance <= self.rsu_proximity_radius:
+        #             nearby_sumo_filtered.append(other_id)
+        #     nearby_sumo = nearby_sumo_filtered
+        #
+        # return nearby_sumo
 
     def print_neighbor_comparison_summary(self):
         """Print summary of neighbor detection comparison."""
@@ -282,11 +244,6 @@ class SimulationManager:
         print(f"Total neighbors found by SUMO method: {total_sumo}")
         print(f"Total overlap: {total_overlap}")
         # print(f"Efficiency: Original found {total_original / total_sumo * 100:.1f}% compared to SUMO")
-    def calculate_distance(self, pos1, pos2):
-        """Calculate distance between two geo positions."""
-        # Simple Euclidean distance for demonstration
-        # For real geo coordinates, you'd use haversine formula
-        return geopy.distance.geodesic(pos1, pos2).meters
 
     def run_simulation(self, simulation_path, specific_car_id):
         """Run the full simulation."""
@@ -301,11 +258,11 @@ class SimulationManager:
 
             # Update data for all existing cars
             for vehicle_id in vehicle_ids:
-                position = traci.vehicle.getPosition(vehicle_id)
-                geo_position = traci.simulation.convertGeo(position[0], position[1])
+
+                cartesian_position = traci.vehicle.getPosition(vehicle_id)
                 speed = traci.vehicle.getSpeed(vehicle_id)
 
-                self.update_vehicle(vehicle_id, geo_position, speed, step)
+                self.update_vehicle(vehicle_id, cartesian_position, speed, step)
 
                 self.find_neighbours(specific_car_id,vehicle_ids)
 
