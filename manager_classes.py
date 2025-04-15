@@ -142,13 +142,14 @@ class TriangulationEstimator(PositionEstimator):
 class SimulationManager:
     """Manages the overall simulation."""
 
-    def __init__(self, simulation_params,simulation_type,gps_error_model):
+    def __init__(self, simulation_params,simulation_type,gps_error_model,comm_error_model):
 
         ##temporary
         self.neighbor_comparison = {}
 
         self.simulation_type = simulation_type
         self.gps_error_model = gps_error_model
+        self.comm_error_model = comm_error_model
         #self.estimator = estimator
         self.num_steps = simulation_params.get('number_of_steps', 0)
         self.num_of_neighbors = simulation_params.get('num_of_neighbors', 0)
@@ -196,7 +197,7 @@ class SimulationManager:
         for neighbor_set in [left_behind, right_behind, left_ahead, right_ahead]:
             for neighbor_tuple in neighbor_set:
                 vehicle_id, distance = neighbor_tuple
-                real_world_distance = add_communication_distance_error(abs(distance))
+                real_world_distance = self.comm_error_model.apply_error(abs(distance))
                 # Use absolute distance and filter immediately
                 if real_world_distance <= self.proximity_radius:
                     nearby_vehicles.append((vehicle_id, abs(distance)))
