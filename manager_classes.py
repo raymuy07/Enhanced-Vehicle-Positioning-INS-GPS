@@ -174,16 +174,17 @@ class SimulationManager:
 
         # Create or update vehicle
         if vehicle_id not in self.vehicles:
-            self.vehicles[vehicle_id] = Vehicle(vehicle_id)
+            self.vehicles[vehicle_id] = Vehicle(vehicle_id,self.gps_error_model)
         # Create Position object
         real_position = Position(cartesian_position[0], cartesian_position[1])
         # Update vehicle with new data
         self.vehicles[vehicle_id].update(real_position, speed, step, self.gps_error_model)
 
 
-    def find_neighbours(self, specific_car_id,step):
+    def find_neighbours(self, specific_vehicle,step):
         """Find nearby vehicles using both methods for comparison."""
 
+        specific_car_id = specific_vehicle.id
 
         left_behind = traci.vehicle.getNeighbors(specific_car_id, 0)
         right_behind = traci.vehicle.getNeighbors(specific_car_id, 1)
@@ -200,9 +201,10 @@ class SimulationManager:
                 real_world_distance = self.comm_error_model.apply_error(abs(distance))
 
 
+
                 # Use absolute distance and filter immediately
                 if real_world_distance <= self.proximity_radius:
-                    nearby_vehicles.append((vehicle_id, abs(distance)))
+                    specific_vehicle.neighbors.append((vehicle_id, abs(distance)))
 
         step = traci.simulation.getTime()
 
@@ -262,9 +264,10 @@ class SimulationManager:
                 cartesian_position = traci.vehicle.getPosition(vehicle_id)
                 speed = traci.vehicle.getSpeed(vehicle_id)
 
-                self.update_vehicle(vehicle_id, cartesian_position, speed, step)
+                current_neighbours = self.find_neighbours(vehicle_ids[specific_car_id],step)
 
-                self.find_neighbours(specific_car_id,step)
+                self.update_vehicle(vehicle_id, cartesian_position, speed, step ,current_neighbours)
+
 
         self.print_neighbor_comparison_summary()
 

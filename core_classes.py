@@ -20,16 +20,17 @@ class Position:
 class Vehicle:
     """Represents a vehicle in the simulation."""
 
-    def __init__(self, vehicle_id):
+    def __init__(self, vehicle_id ,error_model):
         self.id = vehicle_id
+        self.error_model = error_model
         self.position_history = []  # Will store PositionRecord objects
         self.neighbors = {}
 
-    def update(self, real_position, speed, step, error_model):
+    def update(self, real_position, speed, step , neighbors=None):
         """Update vehicle with new position data."""
 
         # Generate position with error using the provided error model
-        measured_position = error_model.apply_error(real_position)
+        measured_position = self.error_model.apply_error(real_position)
 
         record = PositionRecord(
             step=step,
