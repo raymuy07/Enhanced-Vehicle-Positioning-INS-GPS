@@ -36,6 +36,19 @@ class GPSErrorModel(ErrorModel):
         # Create and return a new Position object with the perturbed coordinates
         return Position(perturbed_x, perturbed_y, precision_radius)
 
+class CommunicationDistanceErrorModel(ErrorModel):
+    """Implements a communication-specific distance error model."""
+
+    def __init__(self, std_dev=2, systematic_bias=0.3):
+        self.std_dev = std_dev
+        self.systematic_bias = systematic_bias
+
+    def apply_error(self, original_distance):
+        """Apply random Gaussian and systematic error to a communication distance."""
+        random_error = np.random.normal(0, self.std_dev)
+        perturbed_distance = original_distance + random_error + self.systematic_bias
+        return perturbed_distance
+
 
 class PositionEstimator:
     """Base class for different position estimation methods."""
@@ -167,43 +180,27 @@ class SimulationManager:
         self.vehicles[vehicle_id].update(real_position, speed, step, self.gps_error_model)
 
 
-    """TEST START"""
-
-    # def find_neighbours(self, specific_car, all_vehicles):
-    #
-    #     # Assuming we've already started a SUMO simulation and connected with TraC
-    #     # Get the ID of our target vehicle
-    #
-    #     ## redundant
-    #     target_vehicle = specific_car
-    #
-    #     # Example 1: Get vehicles to the right and ahead
-    #     mode = 3  # Binary: 011 (bit 0 and bit 1 are set)
-    #     right_and_ahead = traci.vehicle.getNeighbors(target_vehicle, mode)
-    #     print(f"Vehicles to the right and ahead of {target_vehicle}: {right_and_ahead}")
-    #
-    #     # Example 2: Get vehicles to the left and behind
-    #     mode = 0  # Binary: 000 (no bits set)
-    #     left_and_behind = traci.vehicle.getNeighbors(target_vehicle, mode)
-    #     print(f"Vehicles to the left and behind {target_vehicle}: {left_and_behind}")
-    #
-    #     # Example 3: Get vehicles to the right that are blocking a lane change
-    #     mode = 5  # Binary: 101 (bit 0 and bit 2 are set)
-    #     right_blockers = traci.vehicle.getNeighbors(target_vehicle, mode)
-    #     print(f"Vehicles blocking lane change to the right: {right_blockers}")
-    #
-    #     # Example 4: Get all neighboring vehicles ahead (both left and right)
-    #     # For this we need to make two calls and combine results
-    #     mode_right_ahead = 3  # Binary: 011
-    #     mode_left_ahead = 2  # Binary: 010
-    #     right_ahead = traci.vehicle.getNeighbors(target_vehicle, mode_right_ahead)
-    #     left_ahead = traci.vehicle.getNeighbors(target_vehicle, mode_left_ahead)
-    #     all_ahead = right_ahead + left_ahead
-    #     print(f"All vehicles ahead: {all_ahead}")
-
-    # Function to find nearby vehicles using the original approach (iterating through all vehicles)
-    def find_neighbours(self, specific_car_id, vehicle_ids):
+    def find_neighbours(self, specific_car_id,step):
         """Find nearby vehicles using both methods for comparison."""
+
+
+        left_behind = traci.vehicle.getNeighbors(specific_car_id, 0)
+        right_behind = traci.vehicle.getNeighbors(specific_car_id, 1)
+        left_ahead = traci.vehicle.getNeighbors(specific_car_id, 2)
+        right_ahead = traci.vehicle.getNeighbors(specific_car_id, 3)
+
+
+        # Combine all neighbors with filtering before appending
+
+        nearby_vehicles = []
+        for neighbor_set in [left_behind, right_behind, left_ahead, right_ahead]:
+            for neighbor_tuple in neighbor_set:
+                vehicle_id, distance = neighbor_tuple
+                real_world_distance = add_communication_distance_error(abs(distance))
+                # Use absolute distance and filter immediately
+                if real_world_distance <= self.proximity_radius:
+                    nearby_vehicles.append((vehicle_id, abs(distance)))
+
         step = traci.simulation.getTime()
 
         # Using SUMO's getNeighbors
@@ -264,7 +261,7 @@ class SimulationManager:
 
                 self.update_vehicle(vehicle_id, cartesian_position, speed, step)
 
-                self.find_neighbours(specific_car_id,vehicle_ids)
+                self.find_neighbours(specific_car_id,step)
 
         self.print_neighbor_comparison_summary()
 
