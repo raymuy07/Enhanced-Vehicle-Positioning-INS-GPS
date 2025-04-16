@@ -19,15 +19,15 @@ class GPSErrorModel(ErrorModel):
         self.std_dev = std_dev
 
 
-    def apply_error(self, position):
+    def apply_error(self, position_tuple):
         """Apply GPS error to a position."""
 
         # Add random Gaussian error directly in meters
         error_x = np.random.normal(0, self.std_dev)
         error_y = np.random.normal(0, self.std_dev)
 
-        perturbed_x = position[0] + error_x
-        perturbed_y = position[1] + error_y
+        perturbed_x = position_tuple[0] + error_x
+        perturbed_y = position_tuple[1] + error_y
 
         # Calculate the precision radius (magnitude of error vector)
         precision_radius = np.sqrt(error_x ** 2 + error_y ** 2)

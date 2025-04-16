@@ -11,27 +11,27 @@ class Position:
         self.longitude = longitude
         self.precision_radius = precision_radius
 
-    def calculate_distance(self, other_position):
-        """Calculate distance between this position and another."""
-        return geopy.distance.geodesic((self.latitude, self.longitude),
-                                  (other_position.latitude, other_position.longitude)).meters
+    # def calculate_distance(self, other_position):
+    #     """Calculate distance between this position and another."""
+    #     return geopy.distance.geodesic((self.latitude, self.longitude),
+    #                               (other_position.latitude, other_position.longitude)).meters
 
-#
-# class SimpleVehicle:
-#     """Represents a basic vehicle with minimal attributes."""
-#
-#     def __init__(self, vehicle_id, position, speed=0):
-#         self.id = vehicle_id
-#         self.position = position
-#         self.speed = speed
-#
-#     def update_position(self, new_position, new_speed=None):
-#         """Update the vehicle's position and optionally speed."""
-#         self.position = new_position
-#         if new_speed is not None:
-#             self.speed = new_speed
-#
-#
+
+class SimpleVehicle:
+    """Represents a basic vehicle with minimal attributes."""
+
+    def __init__(self, vehicle_id, position, speed=0):
+        self.id = vehicle_id
+        self.position = position
+        self.speed = speed
+
+    def update_position(self, new_position, new_speed=None):
+        """Update the vehicle's position and optionally speed."""
+        self.position = new_position
+        if new_speed is not None:
+            self.speed = new_speed
+
+
 # class MainVehicle:
 #     """The main vehicle that is the focus of the simulation."""
 #
@@ -93,10 +93,11 @@ class Vehicle:
     def update(self, real_position, speed, step, nearby_vehicles=None, nearby_rsus=None):
         """Update vehicle with new position data."""
 
-        # Generate position with error using the provided error model
+        # convert the positions to Position attribute
         measured_position = self.error_model.apply_error(real_position)
+        real_position = Position(real_position[0],real_position[1])
 
-        record = PositionRecord(
+        record = StepRecord(
             step=step,
             real_position=real_position,
             measured_position=measured_position,
@@ -112,7 +113,7 @@ class Vehicle:
         return self.position_history[-1] if self.position_history else None
 
 
-class PositionRecord:
+class StepRecord:
     """Stores position data for a specific time step."""
 
     def __init__(self, step, real_position, measured_position, speed, nearby_vehicles=None, nearby_rsus=None):
