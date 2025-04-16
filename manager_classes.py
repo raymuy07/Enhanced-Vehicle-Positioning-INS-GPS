@@ -150,6 +150,7 @@ class SimulationManager:
         self.simulation_type = simulation_type
         self.gps_error_model = gps_error_model
         self.comm_error_model = comm_error_model
+
         #self.estimator = estimator
         self.num_steps = simulation_params.get('number_of_steps', 0)
         self.num_of_neighbors = simulation_params.get('num_of_neighbors', 0)
@@ -193,6 +194,18 @@ class SimulationManager:
         else:
             print("Error:couldn't choose random vehicle.")
 
+    def create_snapshot(self,neighbor_id,real_world_distance):
+        """Create a snapshot of the vehicle's current state."""
+
+        map_tuple_position = traci.vehicle.getPosition(neighbor_id)
+        map_position = Position(map_tuple_position[0],map_tuple_position[1])
+        position_w_error = self.gps_error_model.apply_error(map_tuple_position)
+
+        return {
+            'id': neighbor_id,
+            'true_position': map_position,
+            'position_w_error': position_w_error,
+        }
 
     def find_neighbours(self):
         """Find nearby vehicles using both methods for comparison."""
@@ -207,15 +220,22 @@ class SimulationManager:
 
 
         # Combine all neighbors with filtering before appending
-
+        """Here I want to create a list of Simple_Veicles class that are initialized to the following data:
+        Position(x,y,percision_radius)
+        real_world_distance i.e the distance after applying communication error,
+    
+        """
         nearby_vehicles = []
         for neighbor_set in [left_behind, right_behind, left_ahead, right_ahead]:
             for neighbor_tuple in neighbor_set:
+
                 vehicle_id, distance = neighbor_tuple
                 real_world_distance = self.comm_error_model.apply_error(abs(distance))
 
                 if real_world_distance <= self.proximity_radius:
-                    nearby_vehicles.append((vehicle_id, abs(distance)))
+                    neighbor_vehicle_snapshot = self.create_snapshot(vehicle_id,real_world_distance)
+                    nearby_vehicles.append(neighbor_vehicle_snapshot)
+
         return nearby_vehicles
 
 
@@ -243,10 +263,8 @@ class SimulationManager:
                 speed = traci.vehicle.getSpeed(self.main_vehicle_obj.id)
                 current_neighbours = self.find_neighbours()
 
-                if current_neighbours:
-                    print(f"Found")
-                    print(current_neighbours)
                 self.main_vehicle_obj.update(cartesian_position, speed, step ,current_neighbours)
+                print(self.main_vehicle_obj.current_record)
 
             else:
                 ##Main car is not in the simulation.

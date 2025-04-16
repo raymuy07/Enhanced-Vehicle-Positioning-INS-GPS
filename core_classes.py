@@ -6,9 +6,9 @@ from rsu_config import rsu_points_by_simulation
 class Position:
     """Represents a geographical position with optional precision information."""
 
-    def __init__(self, latitude, longitude, precision_radius=None):
-        self.latitude = latitude
-        self.longitude = longitude
+    def __init__(self, x, y, precision_radius=None):
+        self.x = x
+        self.y = y
         self.precision_radius = precision_radius
 
     # def calculate_distance(self, other_position):
@@ -30,56 +30,6 @@ class SimpleVehicle:
         self.position = new_position
         if new_speed is not None:
             self.speed = new_speed
-
-
-# class MainVehicle:
-#     """The main vehicle that is the focus of the simulation."""
-#
-#     def __init__(self, vehicle_id, error_model):
-#         self.id = vehicle_id
-#         self.error_model = error_model
-#         self.position_history = []  # Will store PositionRecord objects
-#         self.neighbor_vehicles = []  # List of SimpleVehicle objects
-#
-#     def update(self, real_position, speed, step, neighbor_vehicles=None, nearby_rsus=None):
-#         """Update vehicle with new position data."""
-#         # Generate position with error using the provided error model
-#         measured_position = self.error_model.apply_error(real_position)
-#
-#         record = PositionRecord(
-#             step=step,
-#             real_position=real_position,
-#             measured_position=measured_position,
-#             speed=speed,
-#             nearby_vehicles=neighbor_vehicles,
-#             nearby_rsus=nearby_rsus
-#         )
-#         self.position_history.append(record)
-#
-#         # Store the SimpleVehicle objects
-#         if neighbor_vehicles:
-#             self.neighbor_vehicles = neighbor_vehicles
-#
-#     @property
-#     def current_record(self):
-#         """Get the most recent position record."""
-#         return self.position_history[-1] if self.position_history else None
-#
-#     @property
-#     def current_position(self):
-#         """Get the current position of the vehicle."""
-#         return self.current_record.measured_position if self.current_record else None
-#
-#     @property
-#     def current_speed(self):
-#         """Get the current speed of the vehicle."""
-#         return self.current_record.speed if self.current_record else None
-#
-#     def get_step_data(self, step_number):
-#         """Get data for a specific simulation step."""
-#         if 0 <= step_number < len(self.position_history):
-#             return self.position_history[step_number]
-#         return None
 
 class Vehicle:
     """Represents a vehicle in the simulation."""
