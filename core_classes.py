@@ -11,11 +11,13 @@ class Position:
         self.y = y
         self.precision_radius = precision_radius
 
-    # def calculate_distance(self, other_position):
-    #     """Calculate distance between this position and another."""
-    #     return geopy.distance.geodesic((self.latitude, self.longitude),
-    #                               (other_position.latitude, other_position.longitude)).meters
 
+    def calculate_distance(self, other_position):
+        """Calculate distance between this position and another."""
+
+        x1, y1 = other_position
+        distance = ((self.x - x1) ** 2 + (self.y - y1) ** 2) ** 0.5
+        return distance
 
 class SimpleVehicle:
     """Represents a basic vehicle with minimal attributes."""
@@ -97,9 +99,6 @@ class RSU:
         """Attributes of the RSUManager class"""
         self.rsu_locations = rsu_grid
         self.reception_radius = reception_radius
-        self.vehicle_proximity = {step: {rsu_index: [] for rsu_index in range(len(self.rsu_locations))} for step in
-                                  range(100)}  # Assuming 100 steps for simplicity
-
 
 
     def generate_rsu_grid(self, point1, point2, point3, point4, interval_km=1):

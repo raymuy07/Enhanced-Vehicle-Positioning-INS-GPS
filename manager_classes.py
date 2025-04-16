@@ -2,6 +2,7 @@ import numpy as np
 import traci
 import random
 from core_classes import Position, RSU, Vehicle
+from utility_functions import calculate_cartesian_distance
 
 
 class ErrorModel:
@@ -57,85 +58,85 @@ class PositionEstimator:
         raise NotImplementedError
 
 
-class TriangulationEstimator(PositionEstimator):
-    """Implements triangulation-based position estimation."""
-
-    def __init__(self, num_neighbors, proximity_radius, quality_filter=None):
-        self.num_neighbors = num_neighbors
-        self.proximity_radius = proximity_radius
-        self.quality_filter = quality_filter
-
-    def estimate_position(self, target_vehicle, all_vehicles, rsus, step):
-        """Estimate position using triangulation with nearby vehicles and RSUs."""
-        # Implementation details...
-        positions, distances, precision_radii = self._gather_reference_points(
-            target_vehicle, all_vehicles, rsus, step)
-
-        selected_positions, selected_distances, is_better, selected_accuracies = \
-            self._select_best_references(positions, distances, precision_radii,
-                                         target_vehicle, step)
-
-        # Perform triangulation with selected points
-        estimated_position = self._triangulate(selected_positions, selected_distances)
-
-        # Store results
-        target_vehicle.current_record.estimated_positions['triangulation'] = estimated_position
-        return estimated_position, is_better
-
-    def _gather_reference_points(self, target_vehicle, all_vehicles, rsus, step):
-
-        # Logic to gather reference points from nearby vehicles and RSUs
-        positions, distances, precision_radii = [], [], []
-
-        # Add RSUs
-        for rsu in rsus:
-            distance = target_vehicle.current_record.real_position.distance_to(rsu.position)
-            if distance <= self.proximity_radius:
-                positions.append(rsu.position)
-                distances.append(distance)
-                precision_radii.append(rsu.proximity_radius)
-
-        # Add nearby vehicles
-        for vehicle_id, vehicle in all_vehicles.items():
-            if vehicle_id == target_vehicle.id:
-                continue
-
-            distance = target_vehicle.current_record.real_position.distance_to(
-                vehicle.current_record.real_position)
-
-            # Add communication error to distance
-            perturbed_distance = add_communication_distance_error(distance)
-
-            if perturbed_distance <= self.proximity_radius:
-                positions.append(vehicle.current_record.measured_position)
-                distances.append(perturbed_distance)
-                precision_radii.append(vehicle.current_record.measured_position.precision_radius)
-
-        return positions, distances, precision_radii
-
-    def _select_best_references(self, positions, distances, precision_radii, target_vehicle, step):
-        # Simplified version of select_positions_for_triangulation
-        if len(positions) < self.num_neighbors:
-            return positions, distances, False, precision_radii
-
-        indices = np.argsort(precision_radii)[:self.num_neighbors]
-        selected_positions = [positions[i] for i in indices]
-        selected_distances = [distances[i] for i in indices]
-        selected_accuracies = [precision_radii[i] for i in indices]
-
-        current_precision = target_vehicle.current_record.measured_position.precision_radius
-        is_better = not (selected_accuracies[2] > current_precision)
-
-        if not self.quality_filter:
-            is_better = True
-
-        return selected_positions, selected_distances, is_better, selected_accuracies
-
-    def _triangulate(self, positions, distances):
-        # Implement triangulation algorithm
-        # This would be the actual triangulation logic
-        # Return a Position object
-        pass
+# class TriangulationEstimator(PositionEstimator):
+#     """Implements triangulation-based position estimation."""
+#
+#     def __init__(self, num_neighbors, proximity_radius, quality_filter=None):
+#         self.num_neighbors = num_neighbors
+#         self.proximity_radius = proximity_radius
+#         self.quality_filter = quality_filter
+#
+#     def estimate_position(self, target_vehicle, all_vehicles, rsus, step):
+#         """Estimate position using triangulation with nearby vehicles and RSUs."""
+#         # Implementation details...
+#         positions, distances, precision_radii = self._gather_reference_points(
+#             target_vehicle, all_vehicles, rsus, step)
+#
+#         selected_positions, selected_distances, is_better, selected_accuracies = \
+#             self._select_best_references(positions, distances, precision_radii,
+#                                          target_vehicle, step)
+#
+#         # Perform triangulation with selected points
+#         estimated_position = self._triangulate(selected_positions, selected_distances)
+#
+#         # Store results
+#         target_vehicle.current_record.estimated_positions['triangulation'] = estimated_position
+#         return estimated_position, is_better
+#
+#     def _gather_reference_points(self, target_vehicle, all_vehicles, rsus, step):
+#
+#         # Logic to gather reference points from nearby vehicles and RSUs
+#         positions, distances, precision_radii = [], [], []
+#
+#         # Add RSUs
+#         for rsu in rsus:
+#             distance = target_vehicle.current_record.real_position.distance_to(rsu.position)
+#             if distance <= self.proximity_radius:
+#                 positions.append(rsu.position)
+#                 distances.append(distance)
+#                 precision_radii.append(rsu.proximity_radius)
+#
+#         # Add nearby vehicles
+#         for vehicle_id, vehicle in all_vehicles.items():
+#             if vehicle_id == target_vehicle.id:
+#                 continue
+#
+#             distance = target_vehicle.current_record.real_position.distance_to(
+#                 vehicle.current_record.real_position)
+#
+#             # Add communication error to distance
+#             perturbed_distance = add_communication_distance_error(distance)
+#
+#             if perturbed_distance <= self.proximity_radius:
+#                 positions.append(vehicle.current_record.measured_position)
+#                 distances.append(perturbed_distance)
+#                 precision_radii.append(vehicle.current_record.measured_position.precision_radius)
+#
+#         return positions, distances, precision_radii
+#
+#     def _select_best_references(self, positions, distances, precision_radii, target_vehicle, step):
+#         # Simplified version of select_positions_for_triangulation
+#         if len(positions) < self.num_neighbors:
+#             return positions, distances, False, precision_radii
+#
+#         indices = np.argsort(precision_radii)[:self.num_neighbors]
+#         selected_positions = [positions[i] for i in indices]
+#         selected_distances = [distances[i] for i in indices]
+#         selected_accuracies = [precision_radii[i] for i in indices]
+#
+#         current_precision = target_vehicle.current_record.measured_position.precision_radius
+#         is_better = not (selected_accuracies[2] > current_precision)
+#
+#         if not self.quality_filter:
+#             is_better = True
+#
+#         return selected_positions, selected_distances, is_better, selected_accuracies
+#
+#     def _triangulate(self, positions, distances):
+#         # Implement triangulation algorithm
+#         # This would be the actual triangulation logic
+#         # Return a Position object
+#         pass
 
 
 class SimulationManager:
@@ -178,7 +179,6 @@ class SimulationManager:
         arg: initial_steps: its the amount of steps the simulation will run before
         choosing the main vehicle.
         """
-
         vehicle_ids = None
         random_vehicle = None
 
@@ -208,8 +208,7 @@ class SimulationManager:
         }
 
     def find_neighbours(self):
-        """Find nearby vehicles using both methods for comparison."""
-
+        """Find nearby vehicles using get neighbors."""
 
         specific_car_id = self.main_vehicle_obj.id
 
@@ -239,7 +238,21 @@ class SimulationManager:
         return nearby_vehicles
 
 
+    def find_nearby_rsu(self,vehicle_cartesian_position):
 
+        nearby_rsus = []
+
+        ##TODO: change this enumarate and give the Rsu's id's
+        for rsu_index, rsu_position in enumerate(self.rsu_object.rsu_locations):
+            rsu_x, rsu_y = traci.simulation.convertGeo(rsu_position[0], rsu_position[1], fromGeo=True)
+
+            distance_to_rsu = calculate_cartesian_distance(vehicle_cartesian_position,(rsu_x, rsu_y))
+            real_world_distance_rsu = self.comm_error_model.apply_error(distance_to_rsu)
+
+            if real_world_distance_rsu <= self.proximity_radius:
+                nearby_rsus.append({rsu_index,(rsu_x, rsu_y),real_world_distance_rsu})
+
+        return nearby_rsus
     def run_simulation(self, simulation_path, main_vehicle_id):
         """Run the full simulation."""
 
@@ -259,24 +272,18 @@ class SimulationManager:
             if self.main_vehicle_obj.id in traci.vehicle.getIDList():
 
                 ### Get the position and speed
-                cartesian_position = traci.vehicle.getPosition(self.main_vehicle_obj.id)
+                vehicle_cartesian_position = traci.vehicle.getPosition(self.main_vehicle_obj.id)
                 speed = traci.vehicle.getSpeed(self.main_vehicle_obj.id)
                 current_neighbours = self.find_neighbours()
-
-                self.main_vehicle_obj.update(cartesian_position, speed, step ,current_neighbours)
-                print(self.main_vehicle_obj.current_record)
+                nearby_rsu = self.find_nearby_rsu(vehicle_cartesian_position)
+                if nearby_rsu:
+                    print(nearby_rsu)
+                self.main_vehicle_obj.update(vehicle_cartesian_position, speed, step, current_neighbours)
 
             else:
-                ##Main car is not in the simulation.
+                #Main car is not in the simulation.
                 traci.close()
                 break
 
 
-
-        ## TODO Get triangulation estimates
-        """ a replecement for the find_nearby_vehicles_and_check_rsus method should come here and is 
-        partially  implemented in the TriangulationEstimator class
-        """
-
-
-        return self.results
+        return self.main_vehicle_obj

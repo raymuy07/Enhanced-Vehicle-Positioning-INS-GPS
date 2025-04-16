@@ -3,9 +3,14 @@ import numpy as np
 from scipy.optimize import minimize
 
 
-def calculate_distance(pos1, pos2):
-    """Calculate the geodesic distance between two GPS positions."""
-    return geopy.distance.geodesic(pos1, pos2).meters
+
+def calculate_cartesian_distance(pos1, pos2):
+    """Calculate the Euclidean distance between two Cartesian positions."""
+    x1, y1 = pos1
+    x2, y2 = pos2
+
+    distance = ((x2 - x1)**2 + (y2 - y1)**2) ** 0.5
+    return distance
 
 def add_gps_error_and_precision(gps_location, error_std_dev):
     """
