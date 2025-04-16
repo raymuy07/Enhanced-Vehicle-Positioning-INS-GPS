@@ -1,6 +1,6 @@
 import numpy as np
 import traci
-
+import random
 from core_classes import Position, RSU, Vehicle
 
 
@@ -19,24 +19,34 @@ class GPSErrorModel(ErrorModel):
         self.std_dev = std_dev
 
 
-    def apply_error(self, position):
+    def apply_error(self, position_tuple):
         """Apply GPS error to a position."""
 
-        error_in_degrees = self.std_dev / 111320  # 1 degree ≈ 111.32 km at the equator
-        # Add random error to latitude and longitude
-        error_lat = np.random.normal(0, error_in_degrees)
-        error_lon = np.random.normal(0, error_in_degrees)
+        # Add random Gaussian error directly in meters
+        error_x = np.random.normal(0, self.std_dev)
+        error_y = np.random.normal(0, self.std_dev)
 
-        perturbed_lat = position.latitude + error_lat
-        perturbed_lon = position.longitude + error_lon
+        perturbed_x = position_tuple[0] + error_x
+        perturbed_y = position_tuple[1] + error_y
 
-        error_magnitude = np.sqrt(error_lat ** 2 + error_lon ** 2) * 111320  # Convert back to meters
-        precision_radius = error_magnitude
+        # Calculate the precision radius (magnitude of error vector)
+        precision_radius = np.sqrt(error_x ** 2 + error_y ** 2)
 
         # Create and return a new Position object with the perturbed coordinates
-        return Position(perturbed_lat, perturbed_lon, precision_radius)
+        return Position(perturbed_x, perturbed_y, precision_radius)
 
+class CommunicationDistanceErrorModel(ErrorModel):
+    """Implements a communication-specific distance error model."""
 
+    def __init__(self, std_dev, systematic_bias):
+        self.std_dev = std_dev
+        self.systematic_bias = systematic_bias
+
+    def apply_error(self, original_distance):
+        """Apply random Gaussian and systematic error to a communication distance."""
+        random_error = np.random.normal(0, self.std_dev)
+        perturbed_distance = original_distance + random_error + self.systematic_bias
+        return perturbed_distance
 
 
 class PositionEstimator:
@@ -131,16 +141,21 @@ class TriangulationEstimator(PositionEstimator):
 class SimulationManager:
     """Manages the overall simulation."""
 
-    def __init__(self, simulation_params,simulation_type,gps_error_model):
+    def __init__(self, simulation_params,simulation_type,gps_error_model,comm_error_model):
+
+        self.main_vehicle_obj = None
+        ##temporary
+        self.neighbor_comparison = {}
 
         self.simulation_type = simulation_type
         self.gps_error_model = gps_error_model
+        self.comm_error_model = comm_error_model
+
         #self.estimator = estimator
         self.num_steps = simulation_params.get('number_of_steps', 0)
         self.num_of_neighbors = simulation_params.get('num_of_neighbors', 0)
-        rsu_proximity_radius = simulation_params.get('rsu_proximity_radius', 0)
+        self.proximity_radius = simulation_params.get('proximity_radius', 0)
         rsu_flag = simulation_params.get('rsu_flag', False)
-        self.vehicles = {}
 
         self.results = {
             'no_mod_values': [],
@@ -148,83 +163,120 @@ class SimulationManager:
             'errors': []
         }
 
-        self.initialize_rsus(rsu_flag,rsu_proximity_radius)
+        self.initialize_rsus(rsu_flag,self.proximity_radius)
 
     def initialize_rsus(self,rsu_flag,rsu_proximity_radius):
         """Initialize RSUs at specified positions."""
         self.rsu_object = RSU(self.simulation_type, rsu_flag, rsu_proximity_radius)
 
-    def update_vehicle(self, vehicle_id, geo_position, speed, step):
-        """Update or create a vehicle with new data."""
 
-        # Create or update vehicle
-        if vehicle_id not in self.vehicles:
-            self.vehicles[vehicle_id] = Vehicle(vehicle_id)
-        # Create Position object
-        real_position = Position(geo_position[0], geo_position[1])
-        # Update vehicle with new data
-        self.vehicles[vehicle_id].update(real_position, speed, step, self.gps_error_model)
+    def get_random_main_vehicle(self,initial_steps):
+        """This function is for making our simulation more relaistic
+        instead it will focus on the same vehicle all the time, we want
+        to select a random vehicle each simulation.
 
-    def find_neighbours(self, specific_car, all_vehicles):
+        arg: initial_steps: its the amount of steps the simulation will run before
+        choosing the main vehicle.
+        """
 
-        # Assuming we've already started a SUMO simulation and connected with TraC
-        # Get the ID of our target vehicle
+        vehicle_ids = None
+        random_vehicle = None
 
-        ## redundant
-        target_vehicle = specific_car
+        for step in range(initial_steps):
+            traci.simulationStep()
+            vehicle_ids = traci.vehicle.getIDList()
 
-        # Example 1: Get vehicles to the right and ahead
-        mode = 3  # Binary: 011 (bit 0 and bit 1 are set)
-        right_and_ahead = traci.vehicle.getNeighbors(target_vehicle, mode)
-        print(f"Vehicles to the right and ahead of {target_vehicle}: {right_and_ahead}")
+        if vehicle_ids:
+            random_vehicle = random.choice(vehicle_ids)
 
-        # Example 2: Get vehicles to the left and behind
-        mode = 0  # Binary: 000 (no bits set)
-        left_and_behind = traci.vehicle.getNeighbors(target_vehicle, mode)
-        print(f"Vehicles to the left and behind {target_vehicle}: {left_and_behind}")
+        if random_vehicle:
+            return random_vehicle
+        else:
+            print("Error:couldn't choose random vehicle.")
 
-        # Example 3: Get vehicles to the right that are blocking a lane change
-        mode = 5  # Binary: 101 (bit 0 and bit 2 are set)
-        right_blockers = traci.vehicle.getNeighbors(target_vehicle, mode)
-        print(f"Vehicles blocking lane change to the right: {right_blockers}")
+    def create_snapshot(self,neighbor_id,real_world_distance):
+        """Create a snapshot of the vehicle's current state."""
 
-        # Example 4: Get all neighboring vehicles ahead (both left and right)
-        # For this we need to make two calls and combine results
-        mode_right_ahead = 3  # Binary: 011
-        mode_left_ahead = 2  # Binary: 010
-        right_ahead = traci.vehicle.getNeighbors(target_vehicle, mode_right_ahead)
-        left_ahead = traci.vehicle.getNeighbors(target_vehicle, mode_left_ahead)
-        all_ahead = right_ahead + left_ahead
-        print(f"All vehicles ahead: {all_ahead}")
+        map_tuple_position = traci.vehicle.getPosition(neighbor_id)
+        map_position = Position(map_tuple_position[0],map_tuple_position[1])
+        position_w_error = self.gps_error_model.apply_error(map_tuple_position)
 
-    def run_simulation(self, simulation_path, specific_car_id):
+        return {
+            'id': neighbor_id,
+            'true_position': map_position,
+            'position_w_error': position_w_error,
+        }
+
+    def find_neighbours(self):
+        """Find nearby vehicles using both methods for comparison."""
+
+
+        specific_car_id = self.main_vehicle_obj.id
+
+        left_behind = traci.vehicle.getNeighbors(specific_car_id, 0)
+        right_behind = traci.vehicle.getNeighbors(specific_car_id, 1)
+        left_ahead = traci.vehicle.getNeighbors(specific_car_id, 2)
+        right_ahead = traci.vehicle.getNeighbors(specific_car_id, 3)
+
+
+        # Combine all neighbors with filtering before appending
+        """Here I want to create a list of Simple_Veicles class that are initialized to the following data:
+        Position(x,y,percision_radius)
+        real_world_distance i.e the distance after applying communication error,
+    
+        """
+        nearby_vehicles = []
+        for neighbor_set in [left_behind, right_behind, left_ahead, right_ahead]:
+            for neighbor_tuple in neighbor_set:
+
+                vehicle_id, distance = neighbor_tuple
+                real_world_distance = self.comm_error_model.apply_error(abs(distance))
+
+                if real_world_distance <= self.proximity_radius:
+                    neighbor_vehicle_snapshot = self.create_snapshot(vehicle_id,real_world_distance)
+                    nearby_vehicles.append(neighbor_vehicle_snapshot)
+
+        return nearby_vehicles
+
+
+
+    def run_simulation(self, simulation_path, main_vehicle_id):
         """Run the full simulation."""
+
+        initial_steps = 20
 
         # Start SUMO
         traci.start(["sumo", "-c", simulation_path])
 
-        for step in range(self.num_steps):
+        ##initilaize the random vehicle
+        random_vehicle = self.get_random_main_vehicle(initial_steps)
+        self.main_vehicle_obj = Vehicle(random_vehicle, self.gps_error_model)
+
+        for step in range(initial_steps, self.num_steps):
 
             traci.simulationStep()
-            vehicle_ids = traci.vehicle.getIDList()
 
-            # Update data for all existing cars
-            for vehicle_id in vehicle_ids:
-                position = traci.vehicle.getPosition(vehicle_id)
-                geo_position = traci.simulation.convertGeo(position[0], position[1])
-                speed = traci.vehicle.getSpeed(vehicle_id)
+            if self.main_vehicle_obj.id in traci.vehicle.getIDList():
 
-                self.update_vehicle(vehicle_id, geo_position, speed, step)
+                ### Get the position and speed
+                cartesian_position = traci.vehicle.getPosition(self.main_vehicle_obj.id)
+                speed = traci.vehicle.getSpeed(self.main_vehicle_obj.id)
+                current_neighbours = self.find_neighbours()
 
-                self.find_neighbours(specific_car_id,vehicle_ids)
+                self.main_vehicle_obj.update(cartesian_position, speed, step ,current_neighbours)
+                print(self.main_vehicle_obj.current_record)
 
-
-            ## TODO Get triangulation estimates
-            """ a replecement for the find_nearby_vehicles_and_check_rsus method should come here and is 
-            partially  implemented in the TriangulationEstimator class
-            """
+            else:
+                ##Main car is not in the simulation.
+                traci.close()
+                break
 
 
-        # End simulation
-        traci.close()
+
+        ## TODO Get triangulation estimates
+        """ a replecement for the find_nearby_vehicles_and_check_rsus method should come here and is 
+        partially  implemented in the TriangulationEstimator class
+        """
+
+
         return self.results
