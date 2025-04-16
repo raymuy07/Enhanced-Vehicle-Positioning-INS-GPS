@@ -155,7 +155,6 @@ class SimulationManager:
         self.num_of_neighbors = simulation_params.get('num_of_neighbors', 0)
         self.proximity_radius = simulation_params.get('proximity_radius', 0)
         rsu_flag = simulation_params.get('rsu_flag', False)
-        self.vehicles = {}
 
         self.results = {
             'no_mod_values': [],
@@ -169,16 +168,6 @@ class SimulationManager:
         """Initialize RSUs at specified positions."""
         self.rsu_object = RSU(self.simulation_type, rsu_flag, rsu_proximity_radius)
 
-    def update_vehicle(self, vehicle_id, cartesian_position, speed, step):
-        """Update or create a vehicle with new data."""
-
-        # Create or update vehicle
-        if vehicle_id not in self.vehicles:
-            self.vehicles[vehicle_id] = Vehicle(vehicle_id,self.gps_error_model)
-        # Create Position object
-        real_position = Position(cartesian_position[0], cartesian_position[1])
-        # Update vehicle with new data
-        self.vehicles[vehicle_id].update(real_position, speed, step, self.gps_error_model)
 
     def get_random_main_vehicle(self,initial_steps):
         """This function is for making our simulation more relaistic
