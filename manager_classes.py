@@ -1,7 +1,6 @@
-import geopy
 import numpy as np
 import traci
-
+import random
 from core_classes import Position, RSU, Vehicle
 
 
@@ -181,9 +180,29 @@ class SimulationManager:
         # Update vehicle with new data
         self.vehicles[vehicle_id].update(real_position, speed, step, self.gps_error_model)
 
+    def get_random_main_vehicle(self,initial_steps):
+        """This function is for making our simulation more relaistic
+        instead it will focus on the same vehicle all the time, we want
+        to select a random vehicle each simulation.
 
-    def find_neighbours(self,step):
+        arg: initial_steps: its the amount of steps the simulation will run before
+        choosing the main vehicle.
+        """
+
+
+        for step in range(initial_steps):
+            traci.simulationStep()
+            vehicle_ids = traci.vehicle.getIDList()
+
+        if vehicle_ids:
+            random_vehicle = random.choice(vehicle_ids)
+
+        return main_vehicle
+
+
+    def find_neighbours(self):
         """Find nearby vehicles using both methods for comparison."""
+
 
         specific_car_id = self.main_vehicle_obj.id
 
@@ -216,18 +235,31 @@ class SimulationManager:
         # Start SUMO
         traci.start(["sumo", "-c", simulation_path])
 
+        remaining_steps = self.get_random_main_vehicle()
         for step in range(self.num_steps):
 
             traci.simulationStep()
+
+            current_neighbours = None
             vehicle_ids = traci.vehicle.getIDList()
 
+            ### Get the position and speed
+            try:
+                cartesian_position = traci.vehicle.getPosition(self.main_vehicle_obj.id)
+                speed = traci.vehicle.getSpeed(self.main_vehicle_obj.id)
+            except traci.TraCIException:
+                print("caught")
+
+            #!!! TODO: somewhat there is an error with updating the main veicle cause we running through them all.
             # Update data for all existing cars
-            for vehicle_id in vehicle_ids:
+            # for vehicle_id in vehicle_ids:
+            #
+            #     cartesian_position = traci.vehicle.getPosition(vehicle_id)
+            #     speed = traci.vehicle.getSpeed(vehicle_id)
+            ##To avoid errors in get neighbors we need to check that veicle list is full.
 
-                cartesian_position = traci.vehicle.getPosition(vehicle_id)
-                speed = traci.vehicle.getSpeed(vehicle_id)
-
-                current_neighbours = self.find_neighbours(step)
+            if specific_car_id in traci.vehicle.getIDList():
+                current_neighbours = self.find_neighbours()
                 if current_neighbours:
                     print(f"Found")
                     print(current_neighbours)
