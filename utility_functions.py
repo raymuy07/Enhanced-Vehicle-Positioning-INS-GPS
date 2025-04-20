@@ -1,11 +1,14 @@
-import geopy.distance
+from geopy.distance import geodesic
 import numpy as np
 from scipy.optimize import minimize
+from core_classes import Position
+
 
 
 def calculate_distance(pos1, pos2):
     """Calculate the geodesic distance between two GPS positions."""
-    return geopy.distance.geodesic(pos1, pos2).meters
+    return geodesic(pos1, pos2).meters
+
 
 def add_gps_error_and_precision(gps_location, error_std_dev):
     """
@@ -38,10 +41,12 @@ def add_gps_error_and_precision(gps_location, error_std_dev):
 
     return perturbed_location, precision_radius
 
+
 def add_communication_distance_error(original_distance, error_std_dev=2, systematic_bias=0.3):
     random_error = np.random.normal(0, error_std_dev)
     perturbed_distance = original_distance + random_error + systematic_bias
     return perturbed_distance
+
 
 def estimate_next_position(current_position, speed, heading, acceleration,step,step_length):
     """
@@ -66,11 +71,12 @@ def estimate_next_position(current_position, speed, heading, acceleration,step,s
 
     return (next_lat, next_lon)
 
+
 def trilaterate_gps(surrounding_positions, distances, error_radii,sat_pos,alpha):
     # Define the objective function for optimization
     def objective(x):
         est_pos = np.array(x)
-        return sum(((geopy.distance.geodesic(est_pos, np.array(pos)).meters - dist) / error_radius**alpha) ** 2
+        return sum(((geodesic(est_pos, np.array(pos)).meters - dist) / error_radius**alpha) ** 2
                    for pos, dist, error_radius in zip(surrounding_positions, distances, error_radii))
 
     # Initial guess: sat pos
@@ -85,6 +91,25 @@ def trilaterate_gps(surrounding_positions, distances, error_radii,sat_pos,alpha)
 
     return result.x
 
+
+def mod_trilaterate_gps(surrounding_positions, distances, error_radii,sat_pos,alpha):
+    # Define the objective function for optimization
+    def objective(x):
+        est_coords = (x[0], x[1])
+        return sum(((geodesic(est_coords, (pos.x, pos.y)).meters - dist) / error_radius**alpha) ** 2
+                   for pos, dist, error_radius in zip(surrounding_positions, distances, error_radii))
+
+    # Initial guess: sat pos
+    initial_guess = np.array([sat_pos.x, sat_pos.y])
+    # Define bounds for latitude and longitude
+    lat_bounds = (-90, 90)
+    lon_bounds = (-180, 180)
+    bounds = [lat_bounds, lon_bounds]
+
+    # Perform the minimization with bounds
+    result = minimize(objective, initial_guess, bounds=bounds)
+
+    return Position(result.x[0], result.x[1])
 
 def calculate_weighted_position(estimated_position, trilateration_position, weight_inertial, weight_trilateration):
     """
@@ -105,3 +130,24 @@ def calculate_weighted_position(estimated_position, trilateration_position, weig
 
     weighted_position = (weighted_lat, weighted_lon)
     return weighted_position
+
+
+def calculate_absolute_error(estimated_pos, real_pos):
+    """
+    Absolute geodesic distance in meters.
+    """
+    try:
+        coords1 = (estimated_pos.x, estimated_pos.y)
+        coords2 = (real_pos.x, real_pos.y)
+        return geopy.distance.geodesic(coords1, coords2).meters
+    except Exception as e:
+        print(f"[Error] Failed to calculate absolute error: {e}")
+        return None
+
+
+def calculate_squared_error(estimated_pos, real_pos):
+    """
+    Square of the geodesic distance (for MSE).
+    """
+    abs_error = calculate_absolute_error(estimated_pos, real_pos)
+    return abs_error ** 2 if abs_error is not None else None

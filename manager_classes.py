@@ -2,6 +2,9 @@ import numpy as np
 import traci
 import random
 from core_classes import Position, RSU, Vehicle
+from utility_functions import calculate_absolute_error, calculate_squared_error
+from geopy.distance import geodesic
+import math
 
 
 class ErrorModel:
@@ -278,5 +281,102 @@ class SimulationManager:
         partially  implemented in the TriangulationEstimator class
         """
 
-
         return self.results
+
+
+class CalculationManager:
+    def __init__(self, main_vehicle):
+        self.main_vehicle = main_vehicle
+        self.dsrc_errors = {"absolute": [], "mse": []}
+        self.ins_errors = {"absolute": [], "mse": []}
+        self.fused_errors = {"absolute": [], "mse": []}
+
+    def get_dsrc_position(self, step_record):
+        """
+        Placeholder: compute enhanced position based on RSU/DSRC logic.
+        To be filled in based on legacy project logic.
+        """
+        pass
+
+    def get_ins_position(self, step_record):
+        """
+        Placeholder: use ML model to compute projected position from IMU/ECU data.
+        """
+        pass
+
+    def get_fused_position(self, dsrc_pos, ins_pos):
+        """
+        Fuse DSRC and INS positions using Kalman filter or weighted average.
+        """
+        pass
+
+    def calculate_all_errors(self):
+        """
+        Loops over all steps in the main vehicle's history and calculates
+        absolute and squared error for each localization method:
+        - DSRC-enhanced
+        - INS-enhanced
+        - Fused
+
+        Errors are stored in class dictionaries.
+        """
+        for step_record in self.main_vehicle.position_history:
+            real_pos = step_record.real_position
+
+            dsrc_pos = self.get_dsrc_position(step_record)
+            ins_pos = self.get_ins_position(step_record)
+            fused_pos = self.get_fused_position(dsrc_pos, ins_pos)
+
+            if dsrc_pos:
+                abs_e = calculate_absolute_error(dsrc_pos, real_pos)
+                sqr_e = calculate_squared_error(dsrc_pos, real_pos)
+                if abs_e is not None and sqr_e is not None:
+                    self.dsrc_errors["absolute"].append(abs_e)
+                    self.dsrc_errors["mse"].append(sqr_e)
+
+            if ins_pos:
+                abs_e = calculate_absolute_error(ins_pos, real_pos)
+                sqr_e = calculate_squared_error(ins_pos, real_pos)
+                if abs_e is not None and sqr_e is not None:
+                    self.ins_errors["absolute"].append(abs_e)
+                    self.ins_errors["mse"].append(sqr_e)
+
+            if fused_pos:
+                abs_e = calculate_absolute_error(fused_pos, real_pos)
+                sqr_e = calculate_squared_error(fused_pos, real_pos)
+                if abs_e is not None and sqr_e is not None:
+                    self.fused_errors["absolute"].append(abs_e)
+                    self.fused_errors["mse"].append(sqr_e)
+
+    def calculate_average_error(self, method, error_type='absolute'):
+        """
+        Calculates average error for the specified method and error type.
+
+        Parameters:
+        - method: 'dsrc', 'ins', or 'fused'   #### needs to be changed for our selected names
+        - error_type: 'absolute' or 'mse'
+
+        Returns:
+        - Average error as float, or None if input is invalid or data is missing
+        """
+        error_dict = {
+            "dsrc": self.dsrc_errors,
+            "ins": self.ins_errors,
+            "fused": self.fused_errors
+        }
+
+        if method not in error_dict:
+            print(f"[Error] Unknown method '{method}'. Choose from 'dsrc', 'ins', or 'fused'.")
+            return None
+
+        if error_type not in error_dict[method]:
+            print(f"[Error] Unknown error type '{error_type}'. Choose 'absolute' or 'mse'.")
+            return None
+
+        errors = error_dict[method][error_type]
+        if not errors:
+            print(f"[Warning] No errors recorded for {method} - {error_type}.")
+            return None
+
+        return sum(errors) / len(errors)
+
