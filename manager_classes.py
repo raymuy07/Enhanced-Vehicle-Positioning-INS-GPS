@@ -2,9 +2,9 @@ import numpy as np
 import traci
 import random
 from core_classes import Position, RSU, Vehicle
-from utility_functions import calculate_absolute_error, calculate_squared_error
+from utility_functions import calculate_absolute_error, calculate_squared_error, mod_trilaterate_gps
 from geopy.distance import geodesic
-import math
+
 
 
 class ErrorModel:
@@ -241,8 +241,6 @@ class SimulationManager:
 
         return nearby_vehicles
 
-
-
     def run_simulation(self, simulation_path, main_vehicle_id):
         """Run the full simulation."""
 
@@ -291,12 +289,51 @@ class CalculationManager:
         self.ins_errors = {"absolute": [], "mse": []}
         self.fused_errors = {"absolute": [], "mse": []}
 
-    def get_dsrc_position(self, step_record):
+    def get_dsrc_position(self, step_record, alpha=1.0):
         """
-        Placeholder: compute enhanced position based on RSU/DSRC logic.
-        To be filled in based on legacy project logic.
+        Estimate position based on RSU and DSRC trilateration - 'better' algorithm.
+        This is work done in past project and modified by us.
+
+        Parameters:
+        - step_record: StepRecord object
+        - alpha: weight tuning parameter
+
+        Returns:
+        - Position object with estimated coordinates
         """
-        pass
+        surrounding_positions = []
+        distances = []
+        error_radii = []
+
+        # Add RSUs
+        for rsu_coords in step_record.nearby_rsus: # need to check whats is step_record.nearby_rsus
+            rsu_pos = Position(rsu_coords[0], rsu_coords[1])
+            surrounding_positions.append(rsu_pos)
+            distances.append(geodesic((step_record.measured_position.x, step_record.measured_position.y),  # can be replaced with a function
+                                      (rsu_pos.x, rsu_pos.y)).meters)
+            error_radii.append(0.1)  # assume high confidence
+
+        # Add vehicles
+        for vehicle_id, perturbed_distance, vehicle_pos, _ in step_record.nearby_vehicles: # need to check whats is step_record.nearby_vehicles
+            surrounding_positions.append(vehicle_pos)
+            distances.append(perturbed_distance)
+            error_radii.append(
+                vehicle_pos.precision_radius if vehicle_pos.precision_radius else 8.0)  # fallback precision
+
+        # Minimum 3+ points needed
+        if len(surrounding_positions) < 3:
+            return None   # not reliable, maybe we need to return step_record.measured_position
+
+        # Estimate position
+        estimated_pos = mod_trilaterate_gps(
+            surrounding_positions,
+            distances,
+            error_radii,
+            step_record.measured_position,
+            alpha
+        )
+
+        return estimated_pos
 
     def get_ins_position(self, step_record):
         """

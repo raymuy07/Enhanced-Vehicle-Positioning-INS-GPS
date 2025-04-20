@@ -139,7 +139,7 @@ def calculate_absolute_error(estimated_pos, real_pos):
     try:
         coords1 = (estimated_pos.x, estimated_pos.y)
         coords2 = (real_pos.x, real_pos.y)
-        return geopy.distance.geodesic(coords1, coords2).meters
+        return geodesic(coords1, coords2).meters
     except Exception as e:
         print(f"[Error] Failed to calculate absolute error: {e}")
         return None
