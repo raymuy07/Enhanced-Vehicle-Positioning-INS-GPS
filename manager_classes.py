@@ -1,7 +1,7 @@
 import numpy as np
 import traci
 import random
-from core_classes import Position, RSU, Vehicle
+from core_classes import Position, RSU, Vehicle ,RSUManager
 from utility_functions import calculate_cartesian_distance
 
 
@@ -153,10 +153,13 @@ class SimulationManager:
         self.comm_error_model = comm_error_model
 
         #self.estimator = estimator
+
         self.num_steps = simulation_params.get('number_of_steps', 0)
         self.num_of_neighbors = simulation_params.get('num_of_neighbors', 0)
         self.proximity_radius = simulation_params.get('proximity_radius', 0)
         rsu_flag = simulation_params.get('rsu_flag', False)
+
+        self.rsu_manager = RSUManager(self.simulation_type, rsu_flag, self.proximity_radius)
 
         self.results = {
             'no_mod_values': [],
@@ -164,11 +167,8 @@ class SimulationManager:
             'errors': []
         }
 
-        self.initialize_rsus(rsu_flag,self.proximity_radius)
 
-    def initialize_rsus(self,rsu_flag,rsu_proximity_radius):
-        """Initialize RSUs at specified positions."""
-        self.rsu_object = RSU(self.simulation_type, rsu_flag, rsu_proximity_radius)
+        #self.rsu_object = RSU(self.simulation_type, rsu_flag, rsu_proximity_radius)
 
 
     def get_random_main_vehicle(self,initial_steps):
@@ -205,6 +205,7 @@ class SimulationManager:
             'id': neighbor_id,
             'true_position': map_position,
             'position_w_error': position_w_error,
+            'real_world_distance': real_world_distance
         }
 
     def find_neighbours(self):
@@ -240,9 +241,11 @@ class SimulationManager:
 
     def find_nearby_rsu(self,vehicle_cartesian_position):
 
-        nearby_rsus = []
+        # nearby_rsus = []
 
         ##TODO: change this enumarate and give the Rsu's id's
+
+        # for rsu ... in self.rsu_manager.rsu_locations:
         for rsu_index, rsu_position in enumerate(self.rsu_object.rsu_locations):
             rsu_x, rsu_y = traci.simulation.convertGeo(rsu_position[0], rsu_position[1], fromGeo=True)
 
