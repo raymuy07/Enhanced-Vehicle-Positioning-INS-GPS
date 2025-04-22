@@ -155,17 +155,16 @@ class SimulationManager:
         self.gps_error_model = gps_error_model
         self.comm_error_model = comm_error_model
 
-        self.num_steps = simulation_params.get('number_of_steps', 0)
-        self.num_of_neighbors = simulation_params.get('num_of_neighbors', 0)
-        self.proximity_radius = simulation_params.get('proximity_radius', 0)
+        self.gps_refresh_rate = simulation_params.get('gps_refresh_rate', 20)
+        self.dsrc_refresh_rate = simulation_params.get('dsrc_refresh_rate', 10)
+        self.ins_refresh_rate = simulation_params.get('ins_refresh_rate', 1)
+
+        self.num_steps = simulation_params.get('number_of_steps', 500)
+        self.proximity_radius = simulation_params.get('proximity_radius', 300)
         self.rsu_flag = simulation_params.get('rsu_flag', False)
 
-        self.results = {
-            'no_mod_values': [],
-            'better_values': [],
-            'errors': []
-        }
 
+    ##TODO: Check if this function really necessary
     @staticmethod
     def get_random_main_vehicle(initial_steps):
         """This function is for making our simulation more relaistic
@@ -276,10 +275,11 @@ class SimulationManager:
                 ### Get the position and speed
                 vehicle_cartesian_position = traci.vehicle.getPosition(self.main_vehicle_obj.id)
                 speed = traci.vehicle.getSpeed(self.main_vehicle_obj.id)
+
                 current_neighbours = self.find_neighbours()
                 nearby_rsu = self.find_nearby_rsu(vehicle_cartesian_position)
 
-                self.main_vehicle_obj.update(vehicle_cartesian_position, speed, step, current_neighbours)
+                self.main_vehicle_obj.update(vehicle_cartesian_position, speed, step, current_neighbours,nearby_rsu)
 
             else:
                 # Main car is not in the simulation.
