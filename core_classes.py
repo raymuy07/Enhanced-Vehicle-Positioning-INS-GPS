@@ -37,7 +37,7 @@ class SimpleVehicle:
 
 
 class Vehicle:
-    """Represents a vehicle in the simulation."""
+    """Represents the main vehicle in the simulation."""
 
     def __init__(self, vehicle_id):
 

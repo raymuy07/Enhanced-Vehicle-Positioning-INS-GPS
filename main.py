@@ -2,7 +2,8 @@ import traci
 import numpy as np
 
 from core_classes import RSU, Position, Vehicle
-from manager_classes import GPSErrorModel, SimulationManager, CommunicationDistanceErrorModel
+from manager_classes import SimulationManager
+from error_classes import GPSErrorModel, CommunicationDistanceErrorModel
 
 if __name__ == "__main__":
 
