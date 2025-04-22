@@ -252,7 +252,7 @@ class SimulationManager:
 
         return nearby_rsus
 
-    def run_simulation(self, simulation_path, main_vehicle_id):
+    def run_simulation(self, simulation_path):
         """Run the full simulation."""
 
         initial_steps = 20
@@ -288,12 +288,6 @@ class SimulationManager:
 
         return self.main_vehicle_obj
 
-        ## TODO Get triangulation estimates
-        """ a replecement for the find_nearby_vehicles_and_check_rsus method should come here and is 
-        partially  implemented in the TriangulationEstimator class
-        """
-
-        return self.results
 
 
 class CalculationManager:
