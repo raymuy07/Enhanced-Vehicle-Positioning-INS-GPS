@@ -8,7 +8,6 @@ from utility_functions import calculate_absolute_error, calculate_squared_error,
 from geopy.distance import geodesic
 
 
-
 class ErrorModel:
     """Base class for different error models (GPS, INS, etc.)."""
 
@@ -163,7 +162,6 @@ class SimulationManager:
         self.proximity_radius = simulation_params.get('proximity_radius', 300)
         self.rsu_flag = simulation_params.get('rsu_flag', False)
 
-
     ##TODO: Check if this function really necessary
     @staticmethod
     def get_random_main_vehicle(initial_steps):
@@ -262,9 +260,9 @@ class SimulationManager:
         # initialize the RSU, (it must be here cause we need the simulation).
         self.rsu_manager = RSUManager(self.simulation_type, self.rsu_flag, self.proximity_radius)
 
-        ##initilaize the random vehicle
+        # initialize the random vehicle
         random_vehicle = self.get_random_main_vehicle(initial_steps)
-        self.main_vehicle_obj = Vehicle(random_vehicle, self.gps_error_model)
+        self.main_vehicle_obj = Vehicle(random_vehicle)
 
         for step in range(initial_steps, self.num_steps):
 
@@ -272,14 +270,36 @@ class SimulationManager:
 
             if self.main_vehicle_obj.id in traci.vehicle.getIDList():
 
-                ### Get the position and speed
+                # Get main vehicle state
                 vehicle_cartesian_position = traci.vehicle.getPosition(self.main_vehicle_obj.id)
                 speed = traci.vehicle.getSpeed(self.main_vehicle_obj.id)
+                veh_acc = traci.vehicle.getAcceleration(self.main_vehicle_obj.id)
+                veh_heading = traci.vehicle.getAngle(self.main_vehicle_obj.id)
 
-                current_neighbours = self.find_neighbours()
-                nearby_rsu = self.find_nearby_rsu(vehicle_cartesian_position)
+                # DSRC update
+                if step % self.dsrc_refresh_rate == 0:
+                    current_neighbours = self.find_neighbours()
+                    nearby_rsus = self.find_nearby_rsu(vehicle_cartesian_position)
+                else:
+                    current_neighbours = nearby_rsus = None
 
-                self.main_vehicle_obj.update(vehicle_cartesian_position, speed, step, current_neighbours,nearby_rsu)
+                # GPS update
+                measured_position = self.gps_error_model.apply_error(
+                    vehicle_cartesian_position) if step % self.gps_refresh_rate == 0 else None
+
+                # Build the data dictionary
+                vehicle_data = {
+                    'step': step,
+                    'speed': speed,
+                    'acceleration': veh_acc,
+                    'heading': veh_heading,
+                    'real_position': vehicle_cartesian_position,
+                    'nearby_vehicles': current_neighbours,
+                    'nearby_rsus': nearby_rsus,
+                    'measured_position': measured_position
+                }
+
+                self.main_vehicle_obj.update_data(**vehicle_data)
 
             else:
                 # Main car is not in the simulation.
@@ -287,7 +307,6 @@ class SimulationManager:
                 break
 
         return self.main_vehicle_obj
-
 
 
 class CalculationManager:
@@ -314,15 +333,16 @@ class CalculationManager:
         error_radii = []
 
         # Add RSUs
-        for rsu_coords in step_record.nearby_rsus: # need to check whats is step_record.nearby_rsus
+        for rsu_coords in step_record.nearby_rsus:  # need to check whats is step_record.nearby_rsus
             rsu_pos = Position(rsu_coords[0], rsu_coords[1])
             surrounding_positions.append(rsu_pos)
-            distances.append(geodesic((step_record.measured_position.x, step_record.measured_position.y),  # can be replaced with a function
+            distances.append(geodesic((step_record.measured_position.x, step_record.measured_position.y),
+                                      # can be replaced with a function
                                       (rsu_pos.x, rsu_pos.y)).meters)
             error_radii.append(0.1)  # assume high confidence
 
         # Add vehicles
-        for vehicle_id, perturbed_distance, vehicle_pos, _ in step_record.nearby_vehicles: # need to check whats is step_record.nearby_vehicles
+        for vehicle_id, perturbed_distance, vehicle_pos, _ in step_record.nearby_vehicles:  # need to check whats is step_record.nearby_vehicles
             surrounding_positions.append(vehicle_pos)
             distances.append(perturbed_distance)
             error_radii.append(
@@ -330,7 +350,7 @@ class CalculationManager:
 
         # Minimum 3+ points needed
         if len(surrounding_positions) < 3:
-            return None   # not reliable, maybe we need to return step_record.measured_position
+            return None  # not reliable, maybe we need to return step_record.measured_position
 
         # Estimate position
         estimated_pos = mod_trilaterate_gps(
@@ -424,4 +444,3 @@ class CalculationManager:
             return None
 
         return sum(errors) / len(errors)
-

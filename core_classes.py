@@ -39,17 +39,17 @@ class SimpleVehicle:
 class Vehicle:
     """Represents a vehicle in the simulation."""
 
-    def __init__(self, vehicle_id, error_model):
+    def __init__(self, vehicle_id):
+
         self.id = vehicle_id
-        self.error_model = error_model
         self.position_history = []  # Will store PositionRecord objects
         self.neighbors = {}
 
-    def update(self, real_position, speed, step, nearby_vehicles=None, nearby_rsus=None):
+    def update_data(self, step, speed, acceleration, heading, real_position,
+                    nearby_vehicles=None, nearby_rsus=None, measured_position=None):
         """Update vehicle with new position data."""
 
-        # convert the positions to Position attribute
-        measured_position = self.error_model.apply_error(real_position)
+        # Convert the positions to Position attribute
         real_position = Position(real_position[0], real_position[1])
 
         record = StepRecord(
