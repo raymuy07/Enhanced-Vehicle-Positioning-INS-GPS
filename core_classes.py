@@ -57,6 +57,8 @@ class Vehicle:
             real_position=real_position,
             measured_position=measured_position,
             speed=speed,
+            acceleration=acceleration,
+            heading=heading,
             nearby_vehicles=nearby_vehicles,
             nearby_rsus=nearby_rsus
         )
@@ -71,11 +73,13 @@ class Vehicle:
 class StepRecord:
     """Stores position data for a specific time step."""
 
-    def __init__(self, step, real_position, measured_position, speed, nearby_vehicles=None, nearby_rsus=None):
+    def __init__(self, step, real_position, measured_position, speed, acceleration, heading, nearby_vehicles=None, nearby_rsus=None):
         self.step = step
         self.real_position = real_position  # Position without error
         self.measured_position = measured_position  # Position with error
         self.speed = speed
+        self.acceleration = acceleration
+        self.heading = heading
         self.estimated_positions = {}
         self.nearby_vehicles = nearby_vehicles or []
         self.nearby_rsus = nearby_rsus or []
