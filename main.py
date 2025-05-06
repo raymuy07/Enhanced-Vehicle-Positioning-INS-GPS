@@ -2,14 +2,18 @@ import traci
 import numpy as np
 
 from core_classes import RSU, Position, Vehicle
-from manager_classes import GPSErrorModel, SimulationManager, CommunicationDistanceErrorModel
-
+from manager_classes import SimulationManager
+from error_classes import GPSErrorModel, CommunicationDistanceErrorModel
 
 if __name__ == "__main__":
 
     # Simulation parameters
     simulation_params = {
-        'num_of_neighbors': 8,
+
+        'gps_refresh_rate': 50,  # the rate in which the GPS is updated
+        'dsrc_refresh_rate': 10,
+        'ins_refresh_rate': 1,
+
         'number_of_steps': 600,
         'gps_error_model_std': 8,  # 5 - standard std, 10 - very bad sat con
         'communication_error_model_std': 2,
@@ -18,13 +22,13 @@ if __name__ == "__main__":
         'rsu_flag': True
     }
 
-
-    #initialize the GPS error model
+    # initialize the GPS error model
     gps_error_model = GPSErrorModel(simulation_params['gps_error_model_std'])
-    comm_error_model = CommunicationDistanceErrorModel(simulation_params['communication_error_model_std'],simulation_params['systematic_bias'])
-   ##delay = DelayModel() #they values we want
+    comm_error_model = CommunicationDistanceErrorModel(simulation_params['communication_error_model_std'],
+                                                       simulation_params['systematic_bias'])
+    ##delay = DelayModel() #they values we want
 
-   ##TODO switch it to more dynamic method
+    ##TODO switch it to more dynamic method
     specific_car_id = "veh1"
 
     # TODO find more pythonic way to do this
@@ -49,13 +53,10 @@ if __name__ == "__main__":
 
     print(f"Running simulation: {simulation_type}")
 
-
-
-    simulation_manager = SimulationManager(simulation_params,simulation_type,gps_error_model,comm_error_model)
+    simulation_manager = SimulationManager(simulation_params, simulation_type, gps_error_model, comm_error_model)
 
     ##TODO change the specific_car_id method to be more dynamic
-    main_vehicle = simulation_manager.run_simulation(simulation_path, specific_car_id)
+    main_vehicle = simulation_manager.run_simulation(simulation_path)
 
     ##TODO analyze results and print them
     ##
-

@@ -54,26 +54,28 @@ class SimpleVehicle:
 
 
 class Vehicle:
-    """Represents a vehicle in the simulation."""
+    """Represents the main vehicle in the simulation."""
 
-    def __init__(self, vehicle_id, error_model):
+    def __init__(self, vehicle_id):
+
         self.id = vehicle_id
-        self.error_model = error_model
         self.position_history = []  # Will store PositionRecord objects
         self.neighbors = {}
 
-    def update(self, real_position, speed, step, nearby_vehicles=None, nearby_rsus=None):
+    def update_data(self, step, speed, acceleration, heading, real_position,
+                    nearby_vehicles=None, nearby_rsus=None, measured_position=None):
         """Update vehicle with new position data."""
 
-        # convert the positions to Position attribute
+        #convert the positions to Position attribute
         real_position = Position(real_position[0], real_position[1])
-        measured_position = self.error_model.apply_error(real_position)
 
         record = StepRecord(
             step=step,
             real_position=real_position,
             measured_position=measured_position,
             speed=speed,
+            acceleration=acceleration,
+            heading=heading,
             nearby_vehicles=nearby_vehicles,
             nearby_rsus=nearby_rsus
         )
@@ -88,11 +90,13 @@ class Vehicle:
 class StepRecord:
     """Stores position data for a specific time step."""
 
-    def __init__(self, step, real_position, measured_position, speed, nearby_vehicles=None, nearby_rsus=None):
+    def __init__(self, step, real_position, measured_position, speed, acceleration, heading, nearby_vehicles=None, nearby_rsus=None):
         self.step = step
         self.real_position = real_position  # Position without error
         self.measured_position = measured_position  # Position with error
         self.speed = speed
+        self.acceleration = acceleration
+        self.heading = heading
         self.estimated_positions = {}
         self.nearby_vehicles = nearby_vehicles or []
         self.nearby_rsus = nearby_rsus or []
