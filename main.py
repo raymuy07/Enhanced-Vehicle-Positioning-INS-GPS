@@ -2,7 +2,7 @@ import traci
 import numpy as np
 
 from core_classes import RSU, Position, Vehicle
-from manager_classes import SimulationManager
+from manager_classes import SimulationManager , CalculationManager
 from error_classes import GPSErrorModel, CommunicationDistanceErrorModel
 
 if __name__ == "__main__":
@@ -59,4 +59,4 @@ if __name__ == "__main__":
     main_vehicle = simulation_manager.run_simulation(simulation_path)
 
     ##TODO analyze results and print them
-    ##
+    calc_manager = CalculationManager(main_vehicle)
