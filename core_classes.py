@@ -13,11 +13,28 @@ class Position:
         self.y = y
         self.precision_radius = precision_radius
 
-    def calculate_distance(self, other_position):
-        """Calculate distance between this position and another."""
+    def cartesian_distance_to(self, other):
+        """Calculate Euclidian distance to another position or (x, y) tuple."""
+        if isinstance(other, Position):
+            x2, y2 = other.x, other.y
+        elif isinstance(other, tuple) and len(other) == 2:
+            x2, y2 = other
+        else:
+            raise ValueError("Unsupported input for cartesian_distance_to")
 
-        x1, y1 = other_position
-        distance = ((self.x - x1) ** 2 + (self.y - y1) ** 2) ** 0.5
+        distance = ((self.x - x2) ** 2 + (self.y - y2) ** 2) ** 0.5
+        return distance
+
+    def geodesic_distance_to(self, other):
+        """Calculate geodesic distance to another position or (lat, lon) tuple."""
+        coords1 = (self.x, self.y)
+        if isinstance(other, Position):
+            coords2 = (other.x, other.y)
+        elif isinstance(other, tuple) and len(other) == 2:
+            coords2 = other
+        else:
+            raise ValueError("Unsupported input type for geodesic_distance_to")
+        distance = geodesic(coords1, coords2).meters
         return distance
 
 
@@ -49,8 +66,8 @@ class Vehicle:
         """Update vehicle with new position data."""
 
         # convert the positions to Position attribute
-        measured_position = self.error_model.apply_error(real_position)
         real_position = Position(real_position[0], real_position[1])
+        measured_position = self.error_model.apply_error(real_position)
 
         record = StepRecord(
             step=step,
@@ -81,11 +98,10 @@ class StepRecord:
         self.nearby_rsus = nearby_rsus or []
 
 
-
 class RSU:
     def __init__(self, rsu_id, x, y):
         self.id = rsu_id
-        self.x = x
+        self.x = x  ##  might need to change from x, y attributes to position attribute.
         self.y = y
 
     def __repr__(self):
@@ -107,7 +123,6 @@ class RSUManager:
 
     def generate_rsu_grid_cartesian(self, point1, point2, point3, point4, interval_km=1):
 
-
         # Define the boundaries
         lat_min = min(point1[0], point2[0], point3[0], point4[0])
         lat_max = max(point1[0], point2[0], point3[0], point4[0])
@@ -120,7 +135,6 @@ class RSUManager:
         while current_lat <= lat_max:
             current_lon = lon_min
             while current_lon <= lon_max:
-
                 x, y = traci.simulation.convertGeo(current_lat, current_lon, fromGeo=True)
                 rsu = RSU(f"rsu_{rsu_id}", x, y)
                 self.rsu_locations.append(rsu)
@@ -130,4 +144,3 @@ class RSUManager:
                 current_lon = geodesic(kilometers=interval_km).destination((current_lat, current_lon), 90).longitude
             # Move 1 kilometer north
             current_lat = geodesic(kilometers=interval_km).destination((current_lat, lon_min), 0).latitude
-

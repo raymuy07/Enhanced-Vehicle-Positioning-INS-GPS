@@ -1,12 +1,11 @@
 import numpy as np
 import traci
 import random
-from core_classes import Position, RSU, Vehicle, RSUManager
-from utility_functions import calculate_cartesian_distance
-from core_classes import Position, RSU, Vehicle
-from utility_functions import calculate_absolute_error, calculate_squared_error, mod_trilaterate_gps
 from geopy.distance import geodesic
-
+from scipy.optimize import minimize
+from core_classes import Position, RSU, Vehicle, RSUManager
+from core_classes import Position, RSU, Vehicle
+from utility_functions import calculate_absolute_error, calculate_squared_error, cartesian_distance
 
 
 class ErrorModel:
@@ -23,15 +22,15 @@ class GPSErrorModel(ErrorModel):
     def __init__(self, std_dev):
         self.std_dev = std_dev
 
-    def apply_error(self, position_tuple):
+    def apply_error(self, position):
         """Apply GPS error to a position."""
 
         # Add random Gaussian error directly in meters
         error_x = np.random.normal(0, self.std_dev)
         error_y = np.random.normal(0, self.std_dev)
 
-        perturbed_x = position_tuple[0] + error_x
-        perturbed_y = position_tuple[1] + error_y
+        perturbed_x = position.x + error_x
+        perturbed_y = position.y + error_y
 
         # Calculate the precision radius (magnitude of error vector)
         precision_radius = np.sqrt(error_x ** 2 + error_y ** 2)
@@ -241,7 +240,7 @@ class SimulationManager:
         # for rsu ... in self.rsu_manager.rsu_locations:
         for rsu in self.rsu_manager.rsu_locations:
 
-            distance_to_rsu = calculate_cartesian_distance(vehicle_cartesian_position, (rsu.x, rsu.y))
+            distance_to_rsu = cartesian_distance(vehicle_cartesian_position, (rsu.x, rsu.y))
             real_world_distance_rsu = self.comm_error_model.apply_error(distance_to_rsu)
 
             if real_world_distance_rsu <= self.proximity_radius:
@@ -289,13 +288,29 @@ class SimulationManager:
         return self.main_vehicle_obj
 
 
-
 class CalculationManager:
     def __init__(self, main_vehicle):
         self.main_vehicle = main_vehicle
         self.dsrc_errors = {"absolute": [], "mse": []}
         self.ins_errors = {"absolute": [], "mse": []}
         self.fused_errors = {"absolute": [], "mse": []}
+
+    @staticmethod
+    def _trilaterate_position(positions, distances, error_radii, initial_guess, alpha=1.0):
+        """
+        Weighted GPS trilateration using geodesic distances and error-based weighting.
+        """
+        # Define the objective function for optimization
+        def objective(x):
+            est_coords = (x[0], x[1])
+            return sum(((geodesic(est_coords, (pos.x, pos.y)).meters - dist) / error_radius ** alpha) ** 2
+                       for pos, dist, error_radius in zip(positions, distances, error_radii))
+
+        initial_guess_arr = np.array([initial_guess.x, initial_guess.y])
+        bounds = [(-90, 90), (-180, 180)]
+
+        result = minimize(objective, initial_guess_arr, bounds=bounds)
+        return Position(result.x[0], result.x[1])
 
     def get_dsrc_position(self, step_record, alpha=1.0):
         """
@@ -333,7 +348,7 @@ class CalculationManager:
             return None   # not reliable, maybe we need to return step_record.measured_position
 
         # Estimate position
-        estimated_pos = mod_trilaterate_gps(
+        estimated_pos = self._trilaterate_position(
             surrounding_positions,
             distances,
             error_radii,
