@@ -2,7 +2,7 @@ import traci
 import numpy as np
 
 from core_classes import RSU, Position, Vehicle
-from manager_classes import SimulationManager , CalculationManager
+from manager_classes import SimulationManager, CalculationManager, VehicleEKF
 from error_classes import GPSErrorModel, CommunicationDistanceErrorModel
 
 if __name__ == "__main__":
@@ -10,8 +10,8 @@ if __name__ == "__main__":
     # Simulation parameters
     simulation_params = {
 
-        'gps_refresh_rate': 50,  # the rate in which the GPS is updated
-        'dsrc_refresh_rate': 10,
+        'gps_refresh_rate': 10,  # the rate in which the GPS is updated
+        'dsrc_refresh_rate': 5,
         'ins_refresh_rate': 1,
 
         'number_of_steps': 600,
@@ -59,4 +59,20 @@ if __name__ == "__main__":
     main_vehicle = simulation_manager.run_simulation(simulation_path)
 
     ##TODO analyze results and print them
-    calc_manager = CalculationManager(main_vehicle)
+    # calc_manager = CalculationManager(main_vehicle)
+
+    # for step_record in main_vehicle.position_history:
+    #     if step_record.nearby_vehicles:
+    #         print("hu")
+    ekf = VehicleEKF(main_vehicle.position_history[0])
+
+    for step_record in main_vehicle.position_history:
+        ekf.process_step(step_record)
+
+    ekf.plot_results()
+        #
+        # return ekf
+
+    # Note: data_sequence should be a list of vehicle_data dictionaries as shown in your format
+    # Run the simulation with your actual data from SUMO
+    # run_simulation(data_sequence)

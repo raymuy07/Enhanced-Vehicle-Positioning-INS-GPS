@@ -5,6 +5,8 @@ from scipy.optimize import minimize
 from core_classes import Position, RSU, Vehicle, RSUManager
 from core_classes import Position, RSU, Vehicle
 from utility_functions import calculate_absolute_error, calculate_squared_error, cartesian_distance
+import numpy as np
+from scipy.linalg import block_diag
 
 class SimulationManager:
     """Manages the overall simulation."""
@@ -18,8 +20,8 @@ class SimulationManager:
         self.gps_error_model = gps_error_model
         self.comm_error_model = comm_error_model
 
-        self.gps_refresh_rate = simulation_params.get('gps_refresh_rate', 20)
-        self.dsrc_refresh_rate = simulation_params.get('dsrc_refresh_rate', 10)
+        self.gps_refresh_rate = simulation_params.get('gps_refresh_rate', 10)
+        self.dsrc_refresh_rate = simulation_params.get('dsrc_refresh_rate', 5)
         self.ins_refresh_rate = simulation_params.get('ins_refresh_rate', 1)
 
         self.num_steps = simulation_params.get('number_of_steps', 500)
@@ -138,7 +140,7 @@ class SimulationManager:
                 vehicle_cartesian_position = traci.vehicle.getPosition(self.main_vehicle_obj.id)
                 speed = traci.vehicle.getSpeed(self.main_vehicle_obj.id)
                 veh_acc = traci.vehicle.getAcceleration(self.main_vehicle_obj.id)
-                veh_heading = traci.vehicle.getAngle(self.main_vehicle_obj.id)
+                veh_heading = traci.vehicle.getAngle(self.main_vehicle_obj.id) #Returns the angle of the named vehicle within the last step [°]
 
                 # DSRC update
                 if step % self.dsrc_refresh_rate == 0:
@@ -179,6 +181,26 @@ class CalculationManager:
         self.dsrc_errors = {"absolute": [], "mse": []}
         self.ins_errors = {"absolute": [], "mse": []}
         self.fused_errors = {"absolute": [], "mse": []}
+        
+        # Initialize Kalman filter state
+        self.state = np.zeros(6)  # [x, y, vx, vy, ax, ay]
+        self.P = np.eye(6) * 1000  # Initial covariance matrix
+        self.dt = 1.0  # Time step (1 second)
+        
+        # Process noise covariance
+        self.Q = block_diag(
+            np.eye(2) * 0.1,  # Position process noise
+            np.eye(2) * 1.0,  # Velocity process noise
+            np.eye(2) * 10.0  # Acceleration process noise
+        )
+        
+        # Measurement noise covariance for GPS
+        self.R_gps = np.eye(2) * 10.0  # GPS measurement noise
+        
+        # Measurement matrix for GPS (only measures position)
+        self.H_gps = np.zeros((2, 6))
+        self.H_gps[0, 0] = 1
+        self.H_gps[1, 1] = 1
 
     @staticmethod
     def _trilaterate_position(positions, distances, error_radii, initial_guess, alpha=1.0):
@@ -244,11 +266,63 @@ class CalculationManager:
 
         return estimated_pos
 
+    def _predict_step(self, acceleration, heading):
+        """Perform the prediction step of the Kalman filter."""
+        # Convert acceleration and heading to x,y components
+        ax = acceleration * np.cos(np.radians(heading))
+        ay = acceleration * np.sin(np.radians(heading))
+        
+        # State transition matrix
+        F = np.eye(6)
+        F[0, 2] = self.dt
+        F[1, 3] = self.dt
+        F[0, 4] = 0.5 * self.dt**2
+        F[1, 5] = 0.5 * self.dt**2
+        F[2, 4] = self.dt
+        F[3, 5] = self.dt
+        
+        # Predict state
+        self.state = F @ self.state
+        self.state[4] = ax  # Update acceleration in state
+        self.state[5] = ay
+        
+        # Predict covariance
+        self.P = F @ self.P @ F.T + self.Q
+        
+        return Position(self.state[0], self.state[1])
+
+    def _update_step(self, measurement):
+        """Perform the update step of the Kalman filter."""
+        # Kalman gain
+        K = self.P @ self.H_gps.T @ np.linalg.inv(self.H_gps @ self.P @ self.H_gps.T + self.R_gps)
+        
+        # Update state
+        measurement_vector = np.array([measurement.x, measurement.y])
+        self.state = self.state + K @ (measurement_vector - self.H_gps @ self.state)
+        
+        # Update covariance
+        self.P = (np.eye(6) - K @ self.H_gps) @ self.P
+        
+        return Position(self.state[0], self.state[1])
+
     def get_ins_position(self, step_record):
         """
-        Placeholder: use ML model to compute projected position from IMU/ECU data.
+        Estimate position using Kalman filter that fuses INS and GPS data.
+        
+        Parameters:
+        - step_record: StepRecord object containing sensor data
+        
+        Returns:
+        - Position object with estimated coordinates
         """
-        pass
+        # Predict step using acceleration and heading
+        predicted_pos = self._predict_step(step_record.acceleration, step_record.heading)
+        
+        # Update step if GPS measurement is available
+        if step_record.measured_position is not None:
+            return self._update_step(step_record.measured_position)
+        
+        return predicted_pos
 
     def get_fused_position(self, dsrc_pos, ins_pos):
         """
@@ -325,3 +399,183 @@ class CalculationManager:
             return None
 
         return sum(errors) / len(errors)
+
+
+import numpy as np
+from scipy.linalg import block_diag
+import matplotlib.pyplot as plt
+
+
+class VehicleEKF:
+    def __init__(self,first_measurment):
+
+        ##TODO: we need to set the refresh rate like that as well.
+        # self.gps_refresh_rate = simulation_params.get('gps_refresh_rate', 10)
+        # self.dsrc_refresh_rate = simulation_params.get('dsrc_refresh_rate', 5)
+        # self.ins_refresh_rate = simulation_params.get('ins_refresh_rate', 1)
+        #
+        # State vector: [x, y, speed, heading, acceleration]
+        self.state_dim = 5
+
+        # Initial state estimate
+        self.x = np.zeros((self.state_dim, 1))
+
+        pos = first_measurment.measured_position
+        self.x = np.array([
+            [pos.x],
+            [pos.y],
+            [first_measurment.speed],
+            [first_measurment.heading],
+            [first_measurment.acceleration]
+        ])
+        # Initial covariance matrix
+        self.P = np.eye(self.state_dim) * 100  # Large initial uncertainty
+
+        # Process noise covariance
+        self.Q = np.diag([0.1, 0.1, 0.5, 0.01, 0.5])
+
+        # Measurement noise covariance for each sensor type
+        self.R_imu = np.diag([0.01, 0.1, 0.1])  # heading, acceleration, speed
+        self.R_rsu = np.array([[1.0]])  # scalar range measurement noise (m^2)
+        self.R_gps = np.diag([64.0, 64.0])  # x, y (absolute position from GPS)
+
+        # Time step (in seconds)
+        self.dt = 0.1  # 10 Hz - each step is 0.1 seconds
+
+        # Step counter
+        self.step_count = 0
+
+        # History for plotting
+        self.history = {
+            'true_position': [],
+            'estimated_position': [],
+            'gps_position': [],
+            'step': []
+        }
+
+    def predict(self):
+        """Prediction step of the EKF."""
+        x, y, speed, heading, acc = self.x.flatten()
+        new_x = x + speed * np.cos(heading) * self.dt
+        new_y = y + speed * np.sin(heading) * self.dt
+        new_speed = speed + acc * self.dt
+        new_heading = heading
+        new_acc = acc
+
+        self.x = np.array([[new_x], [new_y], [new_speed], [new_heading], [new_acc]])
+
+        F = np.array([
+            [1, 0, np.cos(heading) * self.dt, -speed * np.sin(heading) * self.dt, 0],
+            [0, 1, np.sin(heading) * self.dt, speed * np.cos(heading) * self.dt, 0],
+            [0, 0, 1, 0, self.dt],
+            [0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 1]
+        ])
+        self.P = F @ self.P @ F.T + self.Q
+
+    def update_imu(self, heading, acceleration, speed):
+        """Update using IMU data (heading, acceleration, speed)."""
+        z = np.array([[heading], [acceleration], [speed]])
+        h = np.array([[self.x[3, 0]], [self.x[4, 0]], [self.x[2, 0]]])
+        H = np.zeros((3, self.state_dim))
+        H[0, 3] = 1
+        H[1, 4] = 1
+        H[2, 2] = 1
+        S = H @ self.P @ H.T + self.R_imu
+        K = self.P @ H.T @ np.linalg.inv(S)
+        y = z - h
+        self.x = self.x + K @ y
+        self.P = (np.eye(self.state_dim) - K @ H) @ self.P
+
+    def update_rsu(self, nearby_rsus):
+        """Update using range-only measurements from RSUs."""
+        for entry in nearby_rsus:
+            rsu = entry['rsu']  # RSU object with .x, .y attributes
+            z = entry['distance_from_veh']
+            source_pos = np.array([rsu.x, rsu.y])
+            # Expected range
+            delta = source_pos - self.x[:2, 0]
+            r_exp = np.linalg.norm(delta)
+            # Jacobian H for range
+            H = np.zeros((1, self.state_dim))
+            H[0, 0] = -delta[0] / r_exp
+            H[0, 1] = -delta[1] / r_exp
+            # Kalman gain
+            S = H @ self.P @ H.T + self.R_rsu
+            K = self.P @ H.T @ np.linalg.inv(S)
+            y = np.array([[z - r_exp]])
+            self.x = self.x + K @ y
+            self.P = (np.eye(self.state_dim) - K @ H) @ self.P
+
+    def update_gps(self, gps_position):
+        """Update using GPS data (absolute position)."""
+        z = np.array([gps_position.x,gps_position.y]).reshape(-1, 1)
+        h = self.x[:2]
+        H = np.zeros((2, self.state_dim))
+        H[0, 0] = 1
+        H[1, 1] = 1
+        S = H @ self.P @ H.T + self.R_gps
+        K = self.P @ H.T @ np.linalg.inv(S)
+        y = z - h
+        self.x = self.x + K @ y
+        self.P = (np.eye(self.state_dim) - K @ H) @ self.P
+
+    def process_step(self, step_record):
+        """Process one time step from a step-record object with attributes."""
+        self.step_count = step_record.step
+        # Prediction
+        self.predict()
+        # IMU update (every step)
+        self.update_imu(
+            step_record.heading,
+            step_record.acceleration,
+            step_record.speed
+        )
+        # RSU update every 5 steps
+        if self.step_count % 5 == 0 and step_record.nearby_rsus:
+            self.update_rsu(step_record.nearby_rsus)
+        # GPS update every 10 steps
+        if self.step_count % 10 == 0 and (step_record.measured_position != None):
+            self.update_gps(step_record.measured_position)
+        # Save history
+        self.history['true_position'].append([step_record.real_position.x, step_record.real_position.y])
+        self.history['estimated_position'].append(self.x[:2, 0])
+
+        if self.step_count % 10 == 0:
+            pos = step_record.measured_position
+            self.history['gps_position'].append([pos.x, pos.y])
+        else:
+            self.history['gps_position'].append(None)
+
+        self.history['step'].append(self.step_count)
+
+    def plot_results(self):
+        true_pos = np.array(self.history['true_position'])
+        est_pos = np.array(self.history['estimated_position'])
+        gps_pos = np.array([p if p is not None else [np.nan, np.nan] for p in self.history['gps_position']])
+        plt.figure(figsize=(10, 8))
+        plt.plot(true_pos[:, 0], true_pos[:, 1], 'b-', label='True Position')
+        plt.plot(est_pos[:, 0], est_pos[:, 1], 'r--', label='EKF Estimate')
+        valid = ~np.isnan(gps_pos[:, 0])
+        plt.scatter(gps_pos[valid, 0], gps_pos[valid, 1], marker='x', label='GPS')
+        plt.legend();
+        plt.grid(True)
+        plt.xlabel('X');
+        plt.ylabel('Y');
+        plt.axis('equal')
+        plt.show()
+        # Error plot
+        error = np.linalg.norm(true_pos - est_pos, axis=1)
+        plt.figure(figsize=(10, 6))
+        plt.plot(self.history['step'], error)
+        plt.xlabel('Step');
+        plt.ylabel('Position Error');
+        plt.grid(True)
+        plt.show()
+
+# Usage remains:
+# for step_record in main_vehicle.position_history:
+#     ekf.process_step(step_record)
+# ekf.plot_results()
+
+
