@@ -118,10 +118,11 @@ class SimulationManager:
     def run_simulation(self, simulation_path):
         """Run the full simulation."""
 
-        initial_steps = 20
+        initial_steps = 10
+
 
         # Start SUMO
-        traci.start(["sumo", "-c", simulation_path])
+        traci.start(["sumo", "-c", simulation_path,'--step-length','0.01'])
 
         # initialize the RSU, (it must be here cause we need the simulation).
         self.rsu_manager = RSUManager(self.simulation_type, self.rsu_flag, self.proximity_radius)
@@ -531,11 +532,14 @@ class VehicleEKF:
             step_record.acceleration,
             step_record.speed
         )
-        # RSU update every 5 steps
-        if self.step_count % 5 == 0 and step_record.nearby_rsus:
-            self.update_rsu(step_record.nearby_rsus)
+
+        # # RSU update every 5 steps
+        # if self.step_count % 5 == 0 and step_record.nearby_rsus:
+        #     self.update_rsu(step_record.nearby_rsus)
+
+
         # GPS update every 10 steps
-        if self.step_count % 10 == 0 and (step_record.measured_position != None):
+        if self.step_count % 10 == 0 and (step_record.measured_position is not None):
             self.update_gps(step_record.measured_position)
         # Save history
         self.history['true_position'].append([step_record.real_position.x, step_record.real_position.y])

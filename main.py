@@ -43,8 +43,8 @@ if __name__ == "__main__":
         simulation_type = 'test_Line'
         specific_car_id = "f_0.1"
     elif sim == 2:
-        simulation_path = "Sumo/Loud_City_NY/osm.sumocfg"
-        simulation_type = 'Loud_City_NY'
+        simulation_path = "Sumo/NY_City/osm.sumocfg"
+        simulation_type = 'NY_City'
     elif sim == 3:
         simulation_path = "Sumo/High_way/osm.sumocfg"
         simulation_type = 'High_way'
