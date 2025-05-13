@@ -408,45 +408,39 @@ import matplotlib.pyplot as plt
 
 
 class VehicleEKF:
-    def __init__(self,first_measurment):
-
-        ##TODO: we need to set the refresh rate like that as well.
-        # self.gps_refresh_rate = simulation_params.get('gps_refresh_rate', 10)
-        # self.dsrc_refresh_rate = simulation_params.get('dsrc_refresh_rate', 5)
-        # self.ins_refresh_rate = simulation_params.get('ins_refresh_rate', 1)
-        #
+    def __init__(self, first_measurement):
         # State vector: [x, y, speed, heading, acceleration]
         self.state_dim = 5
 
         # Initial state estimate
-        self.x = np.zeros((self.state_dim, 1))
+        pos = first_measurement.measured_position
 
-        pos = first_measurment.measured_position
+        # CRITICAL: Convert heading from degrees to radians if needed
+        heading_rad = np.radians(first_measurement.heading)
+
         self.x = np.array([
             [pos.x],
             [pos.y],
-            [first_measurment.speed],
-            [first_measurment.heading],
-            [first_measurment.acceleration]
+            [first_measurement.speed],
+            [heading_rad],  # Convert to radians
+            [first_measurement.acceleration]
         ])
-        # Initial covariance matrix
-        self.P = np.eye(self.state_dim) * 100  # Large initial uncertainty
 
-        # Process noise covariance
-        self.Q = np.diag([0.1, 0.1, 0.5, 0.01, 0.5])
+        # Initial covariance - smaller initial uncertainty
+        self.P = np.eye(self.state_dim) * 10
 
-        # Measurement noise covariance for each sensor type
-        self.R_imu = np.diag([0.05, 0.1, 0.1])  # heading, acceleration, speed
-        self.R_rsu = np.array([[1.0]])  # scalar range measurement noise (m^2)
-        self.R_gps = np.diag([25.0, 25.0])  # x, y (absolute position from GPS)
+        # Process noise - smaller values for more trust in model
+        self.Q = np.diag([0.05, 0.05, 0.1, 0.01, 0.1])
+
+        # Measurement noise - increase trust in GPS by reducing values
+        self.R_imu = np.diag([0.01, 0.05, 0.05])  # heading, acceleration, speed
+        self.R_gps = np.diag([4.0, 4.0])  # Much smaller than your 64.0 value
 
         # Time step (in seconds)
-        self.dt = 0.1  # 10 Hz - each step is 0.1 seconds
+        self.dt = 0.1  # 10 Hz
 
-        # Step counter
+        # Step counter and history as in your original code
         self.step_count = 0
-
-        # History for plotting
         self.history = {
             'true_position': [],
             'estimated_position': [],
@@ -455,24 +449,22 @@ class VehicleEKF:
         }
 
     def predict(self):
-        """Prediction step of the EKF."""
+        """Improved prediction step with better handling of heading."""
         x, y, speed, heading, acc = self.x.flatten()
 
-        # Add a small regularization for very small speeds to avoid numerical issues
-        effective_speed = max(speed, 0.1)
-
+        # Use proper motion equations
         new_x = x + speed * np.cos(heading) * self.dt
         new_y = y + speed * np.sin(heading) * self.dt
-        new_speed = max(0, speed + acc * self.dt)  # Ensure non-negative speed
-        new_heading = heading  # Consider modeling heading change if you have yaw rate
-        new_acc = acc
+        new_speed = speed + acc * self.dt
+        new_heading = heading  # Remains constant unless updated
+        new_acc = acc  # Remains constant unless updated
 
         self.x = np.array([[new_x], [new_y], [new_speed], [new_heading], [new_acc]])
 
-        # Improved Jacobian calculation
+        # Jacobian of state transition function
         F = np.array([
-            [1, 0, np.cos(heading) * self.dt, -effective_speed * np.sin(heading) * self.dt, 0],
-            [0, 1, np.sin(heading) * self.dt, effective_speed * np.cos(heading) * self.dt, 0],
+            [1, 0, np.cos(heading) * self.dt, -speed * np.sin(heading) * self.dt, 0],
+            [0, 1, np.sin(heading) * self.dt, speed * np.cos(heading) * self.dt, 0],
             [0, 0, 1, 0, self.dt],
             [0, 0, 0, 1, 0],
             [0, 0, 0, 0, 1]
@@ -481,88 +473,77 @@ class VehicleEKF:
         self.P = F @ self.P @ F.T + self.Q
 
     def update_imu(self, heading, acceleration, speed):
-        """Update using IMU data (heading, acceleration, speed)."""
-        z = np.array([[heading], [acceleration], [speed]])
+        """Update using IMU data with heading conversion."""
+        # CRITICAL: Convert heading from degrees to radians
+        heading_rad = np.radians(heading)
+
+        z = np.array([[heading_rad], [acceleration], [speed]])
         h = np.array([[self.x[3, 0]], [self.x[4, 0]], [self.x[2, 0]]])
+
+        # Handle potential wrapping of heading difference
+        y = z - h
+        y[0, 0] = np.arctan2(np.sin(y[0, 0]), np.cos(y[0, 0]))  # Normalize angle difference
+
         H = np.zeros((3, self.state_dim))
         H[0, 3] = 1
         H[1, 4] = 1
         H[2, 2] = 1
+
         S = H @ self.P @ H.T + self.R_imu
         K = self.P @ H.T @ np.linalg.inv(S)
-        y = z - h
+
         self.x = self.x + K @ y
         self.P = (np.eye(self.state_dim) - K @ H) @ self.P
 
-    def update_rsu(self, nearby_rsus):
-        """Update using range-only measurements from RSUs."""
-        for entry in nearby_rsus:
-            rsu = entry['rsu']  # RSU object with .x, .y attributes
-            z = entry['distance_from_veh']
-            source_pos = np.array([rsu.x, rsu.y])
-            # Expected range
-            delta = source_pos - self.x[:2, 0]
-            r_exp = np.linalg.norm(delta)
-            # Jacobian H for range
-            H = np.zeros((1, self.state_dim))
-            H[0, 0] = -delta[0] / r_exp
-            H[0, 1] = -delta[1] / r_exp
-            # Kalman gain
-            S = H @ self.P @ H.T + self.R_rsu
-            K = self.P @ H.T @ np.linalg.inv(S)
-            y = np.array([[z - r_exp]])
-            self.x = self.x + K @ y
-            self.P = (np.eye(self.state_dim) - K @ H) @ self.P
+        # Normalize heading after update
+        self.x[3, 0] = np.arctan2(np.sin(self.x[3, 0]), np.cos(self.x[3, 0]))
 
     def update_gps(self, gps_position):
-        """Update using GPS data (absolute position)."""
+        """Update using GPS data with improved trust balance."""
         z = np.array([gps_position.x, gps_position.y]).reshape(-1, 1)
         h = self.x[:2]
+
         H = np.zeros((2, self.state_dim))
         H[0, 0] = 1
         H[1, 1] = 1
 
-        # Calculate innovation
+        S = H @ self.P @ H.T + self.R_gps
+        K = self.P @ H.T @ np.linalg.inv(S)
+
         y = z - h
 
-        # Innovation covariance
-        S = H @ self.P @ H.T + self.R_gps
+        # Optional: Implement a validation gate for outlier rejection
+        # mahalanobis = y.T @ np.linalg.inv(S) @ y
+        # if mahalanobis > 9.21:  # 99% confidence for 2 DOF
+        #     print(f"Warning: GPS measurement rejected at step {self.step_count}")
+        #     return
 
-        # Add an innovation consistency check (Mahalanobis distance)
-        mahalanobis = y.T @ np.linalg.inv(S) @ y
-        if mahalanobis > 9.0:  # 95% confidence for 2 DOF
-            print(f"Warning: GPS measurement rejected at step {self.step_count}. Mahalanobis distance: {mahalanobis}")
-            return  # Skip this update
-
-        K = self.P @ H.T @ np.linalg.inv(S)
         self.x = self.x + K @ y
         self.P = (np.eye(self.state_dim) - K @ H) @ self.P
 
     def process_step(self, step_record):
-        """Process one time step from a step-record object with attributes."""
+        """Process one time step with improved handling."""
         self.step_count = step_record.step
+
         # Prediction
         self.predict()
-        # IMU update (every step)
+
+        # IMU update (every step) - ENSURE heading is in degrees and being converted
         self.update_imu(
-            step_record.heading,
+            step_record.heading,  # Should be in degrees based on your comment
             step_record.acceleration,
             step_record.speed
         )
 
-        # # RSU update every 5 steps
-        # if self.step_count % 5 == 0 and step_record.nearby_rsus:
-        #     self.update_rsu(step_record.nearby_rsus)
-
-
         # GPS update every 10 steps
         if self.step_count % 10 == 0 and (step_record.measured_position is not None):
             self.update_gps(step_record.measured_position)
-        # Save history
+
+        # Save history as in your original code
         self.history['true_position'].append([step_record.real_position.x, step_record.real_position.y])
         self.history['estimated_position'].append(self.x[:2, 0])
 
-        if self.step_count % 10 == 0:
+        if self.step_count % 10 == 0 and step_record.measured_position is not None:
             pos = step_record.measured_position
             self.history['gps_position'].append([pos.x, pos.y])
         else:
