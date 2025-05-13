@@ -426,20 +426,28 @@ class VehicleEKF:
             [first_measurement.acceleration]
         ])
 
-        # Reasonable initial uncertainty
-        self.P = np.eye(self.state_dim) * 5
+        # Initial covariance - lower for better stability
+        self.P = np.eye(self.state_dim) * 1.0
 
-        # Process noise - relatively small for stability
-        self.Q = np.diag([0.05, 0.05, 0.1, 0.01, 0.1])
+        # Process noise - much lower to reduce jumpiness
+        self.Q = np.diag([0.01, 0.01, 0.05, 0.005, 0.05])
 
-        # Measurement noise
-        self.R_imu = np.diag([0.05, 0.05, 0.05])  # heading, acc, speed
-        self.R_gps = np.diag([4.0, 4.0])  # Reasonable GPS noise
+        # Measurement noise - balanced to avoid jumps
+        self.R_imu = np.diag([0.02, 0.05, 0.02])  # heading, acceleration, speed
+        self.R_gps = np.diag([9.0, 9.0])  # GPS noise - tuned for smoother transitions
 
         # Time step (in seconds)
         self.dt = 0.1
 
-        # Step counter and history as in your original code
+        # Last GPS position and time for jump detection
+        self.last_gps_pos = None
+        self.last_gps_time = 0
+
+        # Flag for stationary detection
+        self.is_stationary = False
+        self.stationary_threshold = 0.1  # m/s
+
+        # Step counter and history
         self.step_count = 0
         self.history = {
             'true_position': [],
@@ -449,38 +457,72 @@ class VehicleEKF:
         }
 
     def predict(self):
-        """Prediction step of the EKF."""
+        """Improved prediction with stationary handling."""
         x, y, speed, heading, acc = self.x.flatten()
 
-        # Standard motion equations (heading is already in math convention)
-        new_x = x + speed * np.cos(heading) * self.dt
-        new_y = y + speed * np.sin(heading) * self.dt
-        new_speed = speed + acc * self.dt
-        new_heading = heading
-        new_acc = acc
+        # Detect if vehicle is stationary
+        self.is_stationary = abs(speed) < self.stationary_threshold
+
+        if self.is_stationary:
+            # When stopped, don't apply motion model
+            new_x = x
+            new_y = y
+            new_speed = 0.0  # Force to zero to prevent drift
+            new_heading = heading
+            new_acc = 0.0  # Force to zero when stopped
+
+            # Use simplified state transition matrix - no movement
+            F = np.eye(self.state_dim)
+
+            # Use small process noise for position when stopped
+            Q_stationary = np.diag([0.001, 0.001, 0.01, 0.001, 0.01])
+            self.P = F @ self.P @ F.T + Q_stationary
+        else:
+            # Normal motion when moving
+            new_x = x + speed * np.cos(heading) * self.dt
+            new_y = y + speed * np.sin(heading) * self.dt
+            new_speed = speed + acc * self.dt
+            new_heading = heading
+            new_acc = acc
+
+            # Standard Jacobian
+            F = np.array([
+                [1, 0, np.cos(heading) * self.dt, -speed * np.sin(heading) * self.dt, 0],
+                [0, 1, np.sin(heading) * self.dt, speed * np.cos(heading) * self.dt, 0],
+                [0, 0, 1, 0, self.dt],
+                [0, 0, 0, 1, 0],
+                [0, 0, 0, 0, 1]
+            ])
+
+            self.P = F @ self.P @ F.T + self.Q
 
         self.x = np.array([[new_x], [new_y], [new_speed], [new_heading], [new_acc]])
 
-        # Jacobian
-        F = np.array([
-            [1, 0, np.cos(heading) * self.dt, -speed * np.sin(heading) * self.dt, 0],
-            [0, 1, np.sin(heading) * self.dt, speed * np.cos(heading) * self.dt, 0],
-            [0, 0, 1, 0, self.dt],
-            [0, 0, 0, 1, 0],
-            [0, 0, 0, 0, 1]
-        ])
-
-        self.P = F @ self.P @ F.T + self.Q
-
     def update_imu(self, heading, acceleration, speed):
-        """Update using IMU data with proper heading conversion."""
-        # Convert SUMO heading to standard math angle
+        """Update using IMU with stationary detection."""
+        # Convert SUMO heading to math convention
         heading_rad = np.radians(90 - heading)
+
+        # Detect if vehicle is stationary
+        is_stationary_now = abs(speed) < self.stationary_threshold
+
+        # If just stopped or just started moving, reset relevant state
+        if is_stationary_now != self.is_stationary:
+            if is_stationary_now:
+                self.x[2, 0] = 0.0  # Reset speed to zero
+                self.x[4, 0] = 0.0  # Reset acceleration to zero
+            self.is_stationary = is_stationary_now
+
+        # Adjust measurement noise based on motion state
+        if self.is_stationary:
+            R_imu_current = np.diag([0.01, 0.01, 0.01])  # Lower noise when stopped
+        else:
+            R_imu_current = self.R_imu
 
         z = np.array([[heading_rad], [acceleration], [speed]])
         h = np.array([[self.x[3, 0]], [self.x[4, 0]], [self.x[2, 0]]])
 
-        # Handle angle wrapping for heading difference
+        # Handle angle wrapping
         y = z - h
         y[0, 0] = np.arctan2(np.sin(y[0, 0]), np.cos(y[0, 0]))
 
@@ -489,48 +531,58 @@ class VehicleEKF:
         H[1, 4] = 1
         H[2, 2] = 1
 
-        S = H @ self.P @ H.T + self.R_imu
+        S = H @ self.P @ H.T + R_imu_current
         K = self.P @ H.T @ np.linalg.inv(S)
 
         self.x = self.x + K @ y
         self.P = (np.eye(self.state_dim) - K @ H) @ self.P
 
-        # Normalize heading after update
+        # Normalize heading
         self.x[3, 0] = np.arctan2(np.sin(self.x[3, 0]), np.cos(self.x[3, 0]))
 
     def update_gps(self, gps_position):
-        """Update using GPS data with improved trust balance."""
+        """Smoothed GPS update with outlier rejection."""
         z = np.array([gps_position.x, gps_position.y]).reshape(-1, 1)
         h = self.x[:2]
+
+        # Calculate innovation
+        y = z - h
 
         H = np.zeros((2, self.state_dim))
         H[0, 0] = 1
         H[1, 1] = 1
 
         S = H @ self.P @ H.T + self.R_gps
-        K = self.P @ H.T @ np.linalg.inv(S)
 
-        y = z - h
+        # Outlier rejection using Mahalanobis distance
+        mahalanobis = y.T @ np.linalg.inv(S) @ y
+        if mahalanobis > 16.0:  # Chi-square 99.9% confidence for 2 DOF
+            print(f"Warning: GPS outlier rejected at step {self.step_count}. Distance: {mahalanobis[0, 0]:.2f}")
+            return
 
-        # Optional: Implement a validation gate for outlier rejection
-        # mahalanobis = y.T @ np.linalg.inv(S) @ y
-        # if mahalanobis > 9.21:  # 99% confidence for 2 DOF
-        #     print(f"Warning: GPS measurement rejected at step {self.step_count}")
-        #     return
+        # Progressive update for smoother transitions
+        # Instead of applying the full update at once, apply it gradually
+        alpha = 0.7  # Smoothing factor (1.0 = standard KF, smaller = smoother)
+
+        K = alpha * self.P @ H.T @ np.linalg.inv(S)
 
         self.x = self.x + K @ y
         self.P = (np.eye(self.state_dim) - K @ H) @ self.P
 
+        # Update last GPS info for next time
+        self.last_gps_pos = z
+        self.last_gps_time = self.step_count
+
     def process_step(self, step_record):
-        """Process one time step with improved handling."""
+        """Process step with improved state handling."""
         self.step_count = step_record.step
 
         # Prediction
         self.predict()
 
-        # IMU update (every step) - ENSURE heading is in degrees and being converted
+        # IMU update
         self.update_imu(
-            step_record.heading,  # Should be in degrees based on your comment
+            step_record.heading,
             step_record.acceleration,
             step_record.speed
         )
@@ -539,11 +591,11 @@ class VehicleEKF:
         if self.step_count % 10 == 0 and (step_record.measured_position is not None):
             self.update_gps(step_record.measured_position)
 
-        # Save history as in your original code
+        # Save history
         self.history['true_position'].append([step_record.real_position.x, step_record.real_position.y])
         self.history['estimated_position'].append(self.x[:2, 0])
 
-        if self.step_count % 10 == 0 and step_record.measured_position is not None:
+        if step_record.measured_position is not None and self.step_count % 10 == 0:
             pos = step_record.measured_position
             self.history['gps_position'].append([pos.x, pos.y])
         else:
@@ -574,7 +626,7 @@ class VehicleEKF:
         plt.ylabel('Position Error');
         plt.grid(True)
         plt.show()
-
+        print("stop")
 # Usage remains:
 # for step_record in main_vehicle.position_history:
 #     ekf.process_step(step_record)
