@@ -436,9 +436,9 @@ class VehicleEKF:
         self.Q = np.diag([0.1, 0.1, 0.5, 0.01, 0.5])
 
         # Measurement noise covariance for each sensor type
-        self.R_imu = np.diag([0.01, 0.1, 0.1])  # heading, acceleration, speed
+        self.R_imu = np.diag([0.05, 0.1, 0.1])  # heading, acceleration, speed
         self.R_rsu = np.array([[1.0]])  # scalar range measurement noise (m^2)
-        self.R_gps = np.diag([64.0, 64.0])  # x, y (absolute position from GPS)
+        self.R_gps = np.diag([25.0, 25.0])  # x, y (absolute position from GPS)
 
         # Time step (in seconds)
         self.dt = 0.1  # 10 Hz - each step is 0.1 seconds
@@ -457,21 +457,27 @@ class VehicleEKF:
     def predict(self):
         """Prediction step of the EKF."""
         x, y, speed, heading, acc = self.x.flatten()
+
+        # Add a small regularization for very small speeds to avoid numerical issues
+        effective_speed = max(speed, 0.1)
+
         new_x = x + speed * np.cos(heading) * self.dt
         new_y = y + speed * np.sin(heading) * self.dt
-        new_speed = speed + acc * self.dt
-        new_heading = heading
+        new_speed = max(0, speed + acc * self.dt)  # Ensure non-negative speed
+        new_heading = heading  # Consider modeling heading change if you have yaw rate
         new_acc = acc
 
         self.x = np.array([[new_x], [new_y], [new_speed], [new_heading], [new_acc]])
 
+        # Improved Jacobian calculation
         F = np.array([
-            [1, 0, np.cos(heading) * self.dt, -speed * np.sin(heading) * self.dt, 0],
-            [0, 1, np.sin(heading) * self.dt, speed * np.cos(heading) * self.dt, 0],
+            [1, 0, np.cos(heading) * self.dt, -effective_speed * np.sin(heading) * self.dt, 0],
+            [0, 1, np.sin(heading) * self.dt, effective_speed * np.cos(heading) * self.dt, 0],
             [0, 0, 1, 0, self.dt],
             [0, 0, 0, 1, 0],
             [0, 0, 0, 0, 1]
         ])
+
         self.P = F @ self.P @ F.T + self.Q
 
     def update_imu(self, heading, acceleration, speed):
@@ -510,14 +516,25 @@ class VehicleEKF:
 
     def update_gps(self, gps_position):
         """Update using GPS data (absolute position)."""
-        z = np.array([gps_position.x,gps_position.y]).reshape(-1, 1)
+        z = np.array([gps_position.x, gps_position.y]).reshape(-1, 1)
         h = self.x[:2]
         H = np.zeros((2, self.state_dim))
         H[0, 0] = 1
         H[1, 1] = 1
-        S = H @ self.P @ H.T + self.R_gps
-        K = self.P @ H.T @ np.linalg.inv(S)
+
+        # Calculate innovation
         y = z - h
+
+        # Innovation covariance
+        S = H @ self.P @ H.T + self.R_gps
+
+        # Add an innovation consistency check (Mahalanobis distance)
+        mahalanobis = y.T @ np.linalg.inv(S) @ y
+        if mahalanobis > 9.0:  # 95% confidence for 2 DOF
+            print(f"Warning: GPS measurement rejected at step {self.step_count}. Mahalanobis distance: {mahalanobis}")
+            return  # Skip this update
+
+        K = self.P @ H.T @ np.linalg.inv(S)
         self.x = self.x + K @ y
         self.P = (np.eye(self.state_dim) - K @ H) @ self.P
 
