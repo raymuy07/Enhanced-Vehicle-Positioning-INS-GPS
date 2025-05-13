@@ -122,7 +122,7 @@ class SimulationManager:
 
 
         # Start SUMO
-        traci.start(["sumo", "-c", simulation_path,'--step-length','0.01'])
+        traci.start(["sumo", "-c", simulation_path])
 
         # initialize the RSU, (it must be here cause we need the simulation).
         self.rsu_manager = RSUManager(self.simulation_type, self.rsu_flag, self.proximity_radius)
@@ -460,6 +460,14 @@ class VehicleEKF:
         """Improved prediction with stationary handling."""
         x, y, speed, heading, acc = self.x.flatten()
 
+        # Calculate expected movement per step
+        dx = speed * np.cos(heading) * self.dt
+        dy = speed * np.sin(heading) * self.dt
+
+        print(f"Predict: speed={speed:.2f} m/s, heading={np.degrees(heading):.1f}° (math), "
+              f"dt={self.dt:.3f}s → movement: dx={dx:.3f}m, dy={dy:.3f}m")
+
+
         # Detect if vehicle is stationary
         self.is_stationary = abs(speed) < self.stationary_threshold
 
@@ -576,6 +584,10 @@ class VehicleEKF:
     def process_step(self, step_record):
         """Process step with improved state handling."""
         self.step_count = step_record.step
+        print(f"Step {self.step_count}: Raw SUMO values - "
+              f"speed={step_record.speed:.2f} m/s, "
+              f"heading={step_record.heading:.1f}°, "
+              f"acc={step_record.acceleration:.2f} m/s²")
 
         # Prediction
         self.predict()

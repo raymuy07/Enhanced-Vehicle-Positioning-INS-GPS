@@ -37,17 +37,16 @@ if __name__ == "__main__":
 
     # TODO add exception if sim is not 1,2,3
 
-    sim = int(input("1- test line\n2- Loud_City_NY\n3- High_way\n"))
+    sim = int(input("1- Route 90\n2- Haifa\n3- Manhattan\n"))
     if sim == 1:
-        simulation_path = "Sumo/test_Line/osm.sumocfg"
-        simulation_type = 'test_Line'
-        specific_car_id = "f_0.1"
+        simulation_path = "Sumo/Route_90/osm.sumocfg"
+        simulation_type = 'Route_90'
     elif sim == 2:
-        simulation_path = "Sumo/NY_City/osm.sumocfg"
-        simulation_type = 'NY_City'
+        simulation_path = "Sumo/Haifa/osm.sumocfg"
+        simulation_type = 'Haifa'
     elif sim == 3:
-        simulation_path = "Sumo/High_way/osm.sumocfg"
-        simulation_type = 'High_way'
+        simulation_path = "Sumo/Manhattan/osm.sumocfg"
+        simulation_type = 'Manhattan'
     else:
         raise ValueError(f"Invalid simulation type: {sim}")
 
