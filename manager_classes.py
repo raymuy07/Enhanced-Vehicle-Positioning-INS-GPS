@@ -415,29 +415,29 @@ class VehicleEKF:
         # Initial state estimate
         pos = first_measurement.measured_position
 
-        # CRITICAL: Convert heading from degrees to radians if needed
-        heading_rad = np.radians(first_measurement.heading)
+        # Convert SUMO heading (0° = North, clockwise) to standard math heading (0° = East, counterclockwise)
+        heading_rad = np.radians(90 - first_measurement.heading)
 
         self.x = np.array([
             [pos.x],
             [pos.y],
             [first_measurement.speed],
-            [heading_rad],  # Convert to radians
+            [heading_rad],
             [first_measurement.acceleration]
         ])
 
-        # Initial covariance - smaller initial uncertainty
-        self.P = np.eye(self.state_dim) * 10
+        # Reasonable initial uncertainty
+        self.P = np.eye(self.state_dim) * 5
 
-        # Process noise - smaller values for more trust in model
+        # Process noise - relatively small for stability
         self.Q = np.diag([0.05, 0.05, 0.1, 0.01, 0.1])
 
-        # Measurement noise - increase trust in GPS by reducing values
-        self.R_imu = np.diag([0.01, 0.05, 0.05])  # heading, acceleration, speed
-        self.R_gps = np.diag([4.0, 4.0])  # Much smaller than your 64.0 value
+        # Measurement noise
+        self.R_imu = np.diag([0.05, 0.05, 0.05])  # heading, acc, speed
+        self.R_gps = np.diag([4.0, 4.0])  # Reasonable GPS noise
 
         # Time step (in seconds)
-        self.dt = 0.1  # 10 Hz
+        self.dt = 0.1
 
         # Step counter and history as in your original code
         self.step_count = 0
@@ -449,19 +449,19 @@ class VehicleEKF:
         }
 
     def predict(self):
-        """Improved prediction step with better handling of heading."""
+        """Prediction step of the EKF."""
         x, y, speed, heading, acc = self.x.flatten()
 
-        # Use proper motion equations
+        # Standard motion equations (heading is already in math convention)
         new_x = x + speed * np.cos(heading) * self.dt
         new_y = y + speed * np.sin(heading) * self.dt
         new_speed = speed + acc * self.dt
-        new_heading = heading  # Remains constant unless updated
-        new_acc = acc  # Remains constant unless updated
+        new_heading = heading
+        new_acc = acc
 
         self.x = np.array([[new_x], [new_y], [new_speed], [new_heading], [new_acc]])
 
-        # Jacobian of state transition function
+        # Jacobian
         F = np.array([
             [1, 0, np.cos(heading) * self.dt, -speed * np.sin(heading) * self.dt, 0],
             [0, 1, np.sin(heading) * self.dt, speed * np.cos(heading) * self.dt, 0],
@@ -473,16 +473,16 @@ class VehicleEKF:
         self.P = F @ self.P @ F.T + self.Q
 
     def update_imu(self, heading, acceleration, speed):
-        """Update using IMU data with heading conversion."""
-        # CRITICAL: Convert heading from degrees to radians
-        heading_rad = np.radians(heading)
+        """Update using IMU data with proper heading conversion."""
+        # Convert SUMO heading to standard math angle
+        heading_rad = np.radians(90 - heading)
 
         z = np.array([[heading_rad], [acceleration], [speed]])
         h = np.array([[self.x[3, 0]], [self.x[4, 0]], [self.x[2, 0]]])
 
-        # Handle potential wrapping of heading difference
+        # Handle angle wrapping for heading difference
         y = z - h
-        y[0, 0] = np.arctan2(np.sin(y[0, 0]), np.cos(y[0, 0]))  # Normalize angle difference
+        y[0, 0] = np.arctan2(np.sin(y[0, 0]), np.cos(y[0, 0]))
 
         H = np.zeros((3, self.state_dim))
         H[0, 3] = 1
