@@ -2,7 +2,7 @@ import traci
 import numpy as np
 
 from core_classes import RSU, Position, Vehicle
-from manager_classes import SimulationManager
+from manager_classes import SimulationManager, CalculationManager, VehicleEKF
 from error_classes import GPSErrorModel, CommunicationDistanceErrorModel
 
 if __name__ == "__main__":
@@ -10,8 +10,8 @@ if __name__ == "__main__":
     # Simulation parameters
     simulation_params = {
 
-        'gps_refresh_rate': 50,  # the rate in which the GPS is updated
-        'dsrc_refresh_rate': 10,
+        'gps_refresh_rate': 10,  # the rate in which the GPS is updated
+        'dsrc_refresh_rate': 5,
         'ins_refresh_rate': 1,
 
         'number_of_steps': 600,
@@ -37,17 +37,16 @@ if __name__ == "__main__":
 
     # TODO add exception if sim is not 1,2,3
 
-    sim = int(input("1- test line\n2- Loud_City_NY\n3- High_way\n"))
+    sim = int(input("1- Route 90\n2- Haifa\n3- Manhattan\n"))
     if sim == 1:
-        simulation_path = "Sumo/test_Line/osm.sumocfg"
-        simulation_type = 'test_Line'
-        specific_car_id = "f_0.1"
+        simulation_path = "Sumo/Route_90/osm.sumocfg"
+        simulation_type = 'Route_90'
     elif sim == 2:
-        simulation_path = "Sumo/Loud_City_NY/osm.sumocfg"
-        simulation_type = 'Loud_City_NY'
+        simulation_path = "Sumo/Haifa/osm.sumocfg"
+        simulation_type = 'Haifa'
     elif sim == 3:
-        simulation_path = "Sumo/High_way/osm.sumocfg"
-        simulation_type = 'High_way'
+        simulation_path = "Sumo/Manhattan/osm.sumocfg"
+        simulation_type = 'Manhattan'
     else:
         raise ValueError(f"Invalid simulation type: {sim}")
 
@@ -59,4 +58,20 @@ if __name__ == "__main__":
     main_vehicle = simulation_manager.run_simulation(simulation_path)
 
     ##TODO analyze results and print them
-    ##
+    # calc_manager = CalculationManager(main_vehicle)
+
+    # for step_record in main_vehicle.position_history:
+    #     if step_record.nearby_vehicles:
+    #         print("hu")
+    ekf = VehicleEKF(main_vehicle.position_history[0])
+
+    for step_record in main_vehicle.position_history:
+        ekf.process_step(step_record)
+
+    ekf.plot_results()
+        #
+        # return ekf
+
+    # Note: data_sequence should be a list of vehicle_data dictionaries as shown in your format
+    # Run the simulation with your actual data from SUMO
+    # run_simulation(data_sequence)

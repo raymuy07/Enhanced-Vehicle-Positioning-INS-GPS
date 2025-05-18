@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2024-05-28 15:29:43 by Eclipse SUMO sumo Version 1.19.0
+<!-- generated on 2025-05-12 17:31:45 by Eclipse SUMO sumo Version 1.22.0
 -->
 
-<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
 
     <input>
         <net-file value="osm.net.xml.gz"/>
@@ -13,6 +13,7 @@
 
     <processing>
         <ignore-route-errors value="true"/>
+        <tls.actuated.jam-threshold value="30"/>
     </processing>
 
     <routing>
@@ -26,8 +27,12 @@
         <no-step-log value="true"/>
     </report>
 
+	<time>
+        <step-length value="0.1"/>
+    </time>
+	
     <gui_only>
         <gui-settings-file value="osm.view.xml"/>
     </gui_only>
 
-</configuration>
+</sumoConfiguration>
