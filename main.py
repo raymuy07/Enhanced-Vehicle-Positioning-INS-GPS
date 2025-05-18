@@ -36,16 +36,17 @@ if __name__ == "__main__":
     want_print = True  # True if you want to print
 
     # TODO add exception if sim is not 1,2,3
+    #TODO change them to also high traffic and med traffice
 
     sim = int(input("1- Route 90\n2- Haifa\n3- Manhattan\n"))
     if sim == 1:
-        simulation_path = "Sumo/Route_90/osm.sumocfg"
+        simulation_path = "Sumo/route_90_high_traffic/osm.sumocfg"
         simulation_type = 'Route_90'
     elif sim == 2:
         simulation_path = "Sumo/Haifa/osm.sumocfg"
         simulation_type = 'Haifa'
     elif sim == 3:
-        simulation_path = "Sumo/Manhattan/osm.sumocfg"
+        simulation_path = "Sumo/manhattan_high_traffic/osm.sumocfg"
         simulation_type = 'Manhattan'
     else:
         raise ValueError(f"Invalid simulation type: {sim}")
