@@ -121,11 +121,22 @@ class RSUManager:
         rsu_points = rsu_points_by_simulation.get(simulation_type)
 
         if rsu_flag and rsu_points:
-            self.generate_rsu_grid_cartesian(*rsu_points)
+            ## self.generate_rsu_grid_cartesian(*rsu_points)
+            self.generate_rsus_from_geo(rsu_points)
+
         else:
             print("No RSUs generated — RSU flag is off or no points provided.")
 
-    def generate_rsu_grid_cartesian(self, point1, point2, point3, point4, interval_km=1):
+    def generate_rsus_from_geo(self, geo_points):
+        """
+        Converts a list of (lat, lon) points to RSU objects.
+        """
+        for idx, (lat, lon) in enumerate(geo_points):
+            x, y = traci.simulation.convertGeo(lat, lon, fromGeo=True)
+            rsu = RSU(f"rsu_{idx}", x, y)
+            self.rsu_locations.append(rsu)
+
+    """def generate_rsu_grid_cartesian(self, point1, point2, point3, point4, interval_km=1):
 
         # Define the boundaries
         lat_min = min(point1[0], point2[0], point3[0], point4[0])
@@ -147,4 +158,4 @@ class RSUManager:
                 # Move 1 kilometer east
                 current_lon = geodesic(kilometers=interval_km).destination((current_lat, current_lon), 90).longitude
             # Move 1 kilometer north
-            current_lat = geodesic(kilometers=interval_km).destination((current_lat, lon_min), 0).latitude
+            current_lat = geodesic(kilometers=interval_km).destination((current_lat, lon_min), 0).latitude"""
