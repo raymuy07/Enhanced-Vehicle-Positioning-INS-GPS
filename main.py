@@ -71,29 +71,6 @@ if __name__ == "__main__":
     comm_error_model = CommunicationDistanceErrorModel(simulation_params['communication_error_model_std'],
                                                        simulation_params['systematic_bias'])
 
-    ##TODO switch it to more dynamic method
-    specific_car_id = "veh1"
-
-    # TODO find more pythonic way to do this
-    better_flag = True  # True if you want to use the better method
-    want_print = True  # True if you want to print
-
-    # TODO add exception if sim is not 1,2,3
-
-    sim = int(input("1- Route 90\n2- Haifa\n3- Manhattan\n"))
-    if sim == 1:
-        simulation_path = "Sumo/Route_90/osm.sumocfg"
-        simulation_type = 'Route_90'
-    elif sim == 2:
-        simulation_path = "Sumo/Haifa/osm.sumocfg"
-        simulation_type = 'Haifa'
-    elif sim == 3:
-        simulation_path = "Sumo/Manhattan/osm.sumocfg"
-        simulation_type = 'Manhattan'
-    else:
-        raise ValueError(f"Invalid simulation type: {sim}")
-
-    print(f"Running simulation: {simulation_type}")
 
     simulation_manager = SimulationManager(simulation_params, simulation_type, gps_error_model, comm_error_model)
 
