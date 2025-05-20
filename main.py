@@ -7,26 +7,69 @@ from error_classes import GPSErrorModel, CommunicationDistanceErrorModel
 
 if __name__ == "__main__":
 
-    # Simulation parameters
-    simulation_params = {
+    # Step 1: Choose simulation scenario
+    print("Choose simulation scenario:")
+    print("1- Route 90 (Open highway)")
+    print("2- Haifa (Mid-sized city)")
+    print("3- Manhattan (Dense urban area)")
 
-        'gps_refresh_rate': 10,  # the rate in which the GPS is updated
+    sim = int(input("Enter your choice (1-3): "))
+
+    if sim == 1:
+        gps_error_std = 5  # Low error – open highway with good satellite visibility
+        simulation_type = 'Route_90'
+    elif sim == 2:
+        gps_error_std = 8  # Medium error – mid-sized city with some signal obstruction
+        simulation_type = 'haifa'
+    elif sim == 3:
+        gps_error_std = 12  # High error – dense urban area with significant multipath effects
+        simulation_type = 'Manhattan'
+    else:
+        raise ValueError(f"Invalid simulation type: {sim}")
+    print(f"Selected simulation: {simulation_type}")
+
+    # Step 2: Choose traffic density
+
+    print("Choose traffic density:")
+    print("1- Low traffic")
+    print("2- Medium traffic")
+    print("3- High traffic")
+    density = int(input("Enter your choice (1-3): "))
+
+    if density == 1:
+        traffic_type = "low_traffic"
+    elif density == 2:
+        traffic_type = "medium_traffic"
+    elif density == 3:
+        traffic_type = "high_traffic"
+    else:
+
+        raise ValueError(f"Invalid traffic density: {density}")
+
+    print(f"Selected traffic density: {traffic_type}")
+
+    # Set simulation path based on selections
+    simulation_path = f"Sumo/{simulation_type.lower()}_{traffic_type}/osm.sumocfg"
+    print(f"Using simulation path: {simulation_path}")
+
+    # Step 3: Set simulation parameters
+    simulation_params = {
+        'gps_refresh_rate': 10,  # the rate at which the GPS is updated
         'dsrc_refresh_rate': 5,
         'ins_refresh_rate': 1,
-
-        'number_of_steps': 600,
-        'gps_error_model_std': 8,  # 5 - standard std, 10 - very bad sat con
+        'number_of_steps': 800,
+        'gps_error_model_std': gps_error_std,  # Set based on scenario
         'communication_error_model_std': 2,
         'systematic_bias': 0.3,
         'proximity_radius': 300,
         'rsu_flag': True
     }
+    print(f"GPS error standard deviation set to: {gps_error_std}")
 
     # initialize the GPS error model
     gps_error_model = GPSErrorModel(simulation_params['gps_error_model_std'])
     comm_error_model = CommunicationDistanceErrorModel(simulation_params['communication_error_model_std'],
                                                        simulation_params['systematic_bias'])
-    ##delay = DelayModel() #they values we want
 
     ##TODO switch it to more dynamic method
     specific_car_id = "veh1"
