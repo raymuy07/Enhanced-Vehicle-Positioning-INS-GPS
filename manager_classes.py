@@ -97,20 +97,22 @@ class SimulationManager:
         return nearby_vehicles
 
     def find_nearby_rsu(self, vehicle_cartesian_position):
+        """
+        Returns a list of nearby RSUs within communication range of the vehicle.
+        Each entry contains the RSU object and it's noisy distance from the vehicle.
+        """
 
         nearby_rsus = []
-        ##TODO: change this enumarate and give the Rsu's id's
 
-        # for rsu ... in self.rsu_manager.rsu_locations:
         for rsu in self.rsu_manager.rsu_locations:
 
             distance_to_rsu = cartesian_distance(vehicle_cartesian_position, (rsu.x, rsu.y))
-            real_world_distance_rsu = self.comm_error_model.apply_error(distance_to_rsu)
+            measured_distance_to_rsu = self.comm_error_model.apply_error(distance_to_rsu)
 
-            if real_world_distance_rsu <= self.proximity_radius:
+            if measured_distance_to_rsu <= self.proximity_radius:
                 nearby_rsus.append({
                     'rsu': rsu,
-                    'distance_from_veh': real_world_distance_rsu
+                    'distance_from_veh': measured_distance_to_rsu
                 })
 
         return nearby_rsus
