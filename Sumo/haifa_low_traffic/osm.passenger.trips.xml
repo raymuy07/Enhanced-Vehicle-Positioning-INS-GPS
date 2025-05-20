@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2025-05-18 23:09:39.595284 by randomTrips.py v1_22_0+0002-63e50f52594
+<configuration>
+    <net-file value="osm.net.xml"/>
+    <output-trip-file value="low_traffic.trips.xml"/>
+    <prefix value="veh"/>
+    <min-distance value="800.0"/>
+    <validate value="True"/>
+    <end value="2.0"/>
+    <insertion-density value="1000.0"/>
+</configuration>
+-->
+
+<!-- generated on 2025-05-18 23:09:39 by Eclipse SUMO duarouter Version 1.22.0
+<duarouterConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/duarouterConfiguration.xsd">
+
+    <input>
+        <net-file value="osm.net.xml"/>
+        <route-files value="low_traffic.trips.xml"/>
+    </input>
+
+    <output>
+        <output-file value="low_traffic.trips.xml.tmp"/>
+        <alternatives-output value="NUL"/>
+        <write-trips value="true"/>
+    </output>
+
+    <time>
+        <begin value="0.0"/>
+        <end value="2.0"/>
+    </time>
+
+    <report>
+        <no-warnings value="true"/>
+        <ignore-errors value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+</duarouterConfiguration>
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <trip id="veh3" depart="0.27" from="-132312833#1" to="1052978843"/>
+    <trip id="veh9" depart="0.81" from="1053256432" to="1087341446"/>
+    <trip id="veh10" depart="0.90" from="-320154334" to="1052978891"/>
+    <trip id="veh11" depart="0.99" from="132312700" to="1052978864"/>
+    <trip id="veh14" depart="1.26" from="-982046992" to="62101832"/>
+    <trip id="veh15" depart="1.35" from="-906679712" to="132312700"/>
+    <trip id="veh17" depart="1.53" from="1053256433" to="-135409711"/>
+    <trip id="veh19" depart="1.71" from="978155084" to="230743878"/>
+    <trip id="veh20" depart="1.80" from="32935452" to="1053256445#2"/>
+    <trip id="veh21" depart="1.89" from="-217459577#2" to="132312833#0"/>
+    <trip id="veh22" depart="1.98" from="998255417" to="307104423#1"/>
+</routes>
