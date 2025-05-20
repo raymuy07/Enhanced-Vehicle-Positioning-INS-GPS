@@ -2,7 +2,7 @@ import traci
 import numpy as np
 
 from core_classes import RSU, Position, Vehicle
-from manager_classes import SimulationManager, CalculationManager, VehicleEKF
+from manager_classes import SimulationManager, VehicleEKF, DSRCPositionEstimator
 from error_classes import GPSErrorModel, CommunicationDistanceErrorModel
 
 if __name__ == "__main__":
@@ -83,6 +83,8 @@ if __name__ == "__main__":
     # for step_record in main_vehicle.position_history:
     #     if step_record.nearby_vehicles:
     #         print("hu")
+    DSRCPE = DSRCPositionEstimator(main_vehicle)
+    DSRCPE.plot_results()
     ekf = VehicleEKF(main_vehicle.position_history[0])
 
     for step_record in main_vehicle.position_history:

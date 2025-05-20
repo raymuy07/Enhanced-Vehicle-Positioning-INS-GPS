@@ -103,38 +103,35 @@ class StepRecord:
 
 
 class RSU:
-    def __init__(self, rsu_id, x, y):
+    def __init__(self, rsu_id, position):
         self.id = rsu_id
-        self.x = x  ##  might need to change from x, y attributes to position attribute.
-        self.y = y
+        self.position = position
 
     def __repr__(self):
-        return f"RSU(id={self.id}, x={self.x}, y={self.y})"
+        return f"RSU(id={self.id}, x={self.position.x}, y={self.position.y})"
 
 
 class RSUManager:
 
     def __init__(self, simulation_type, rsu_flag, reception_radius):
         self.reception_radius = reception_radius
-        self.rsu_locations = []
+        self.rsu_positions = []
 
         rsu_points = rsu_points_by_simulation.get(simulation_type)
 
         if rsu_flag and rsu_points:
-            ## self.generate_rsu_grid_cartesian(*rsu_points)
-            self.generate_rsus_from_geo(rsu_points)
+            self.generate_rsus_from_list(rsu_points)
 
         else:
             print("No RSUs generated — RSU flag is off or no points provided.")
 
-    def generate_rsus_from_geo(self, geo_points):
+    def generate_rsus_from_list(self, rsu_points):
         """
         Converts a list of (lat, lon) points to RSU objects.
         """
-        for idx, (lat, lon) in enumerate(geo_points):
-            x, y = traci.simulation.convertGeo(lat, lon, fromGeo=True)
-            rsu = RSU(f"rsu_{idx}", x, y)
-            self.rsu_locations.append(rsu)
+        for idx, (x, y) in enumerate(rsu_points):
+            rsu = RSU(f"rsu_{idx}", Position(x, y))
+            self.rsu_positions.append(rsu)
 
     """def generate_rsu_grid_cartesian(self, point1, point2, point3, point4, interval_km=1):
 
