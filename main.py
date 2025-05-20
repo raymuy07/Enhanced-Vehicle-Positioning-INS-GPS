@@ -53,6 +53,7 @@ if __name__ == "__main__":
     print(f"Running simulation: {simulation_type}")
 
     simulation_manager = SimulationManager(simulation_params, simulation_type, gps_error_model, comm_error_model)
+
     ##TODO change the specific_car_id method to be more dynamic
     main_vehicle = simulation_manager.run_simulation(simulation_path)
 

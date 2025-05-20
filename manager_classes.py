@@ -464,9 +464,6 @@ class VehicleEKF:
         dx = speed * np.cos(heading) * self.dt
         dy = speed * np.sin(heading) * self.dt
 
-        print(f"Predict: speed={speed:.2f} m/s, heading={np.degrees(heading):.1f}° (math), "
-              f"dt={self.dt:.3f}s → movement: dx={dx:.3f}m, dy={dy:.3f}m")
-
 
         # Detect if vehicle is stationary
         self.is_stationary = abs(speed) < self.stationary_threshold
@@ -584,10 +581,6 @@ class VehicleEKF:
     def process_step(self, step_record):
         """Process step with improved state handling."""
         self.step_count = step_record.step
-        print(f"Step {self.step_count}: Raw SUMO values - "
-              f"speed={step_record.speed:.2f} m/s, "
-              f"heading={step_record.heading:.1f}°, "
-              f"acc={step_record.acceleration:.2f} m/s²")
 
         # Prediction
         self.predict()
@@ -616,29 +609,94 @@ class VehicleEKF:
         self.history['step'].append(self.step_count)
 
     def plot_results(self):
+        # Get all position data
         true_pos = np.array(self.history['true_position'])
         est_pos = np.array(self.history['estimated_position'])
         gps_pos = np.array([p if p is not None else [np.nan, np.nan] for p in self.history['gps_position']])
+
+        # First plot: Position trajectories
         plt.figure(figsize=(10, 8))
         plt.plot(true_pos[:, 0], true_pos[:, 1], 'b-', label='True Position')
         plt.plot(est_pos[:, 0], est_pos[:, 1], 'r--', label='EKF Estimate')
         valid = ~np.isnan(gps_pos[:, 0])
         plt.scatter(gps_pos[valid, 0], gps_pos[valid, 1], marker='x', label='GPS')
-        plt.legend();
+        plt.legend()
         plt.grid(True)
-        plt.xlabel('X');
-        plt.ylabel('Y');
+        plt.xlabel('X position (m)')
+        plt.ylabel('Y position (m)')
+        plt.title('Vehicle Trajectory Comparison')
         plt.axis('equal')
         plt.show()
-        # Error plot
-        error = np.linalg.norm(true_pos - est_pos, axis=1)
+
+        # Second plot: Error comparison
         plt.figure(figsize=(10, 6))
-        plt.plot(self.history['step'], error)
-        plt.xlabel('Step');
-        plt.ylabel('Position Error');
+
+        # Calculate errors
+        ekf_error = np.linalg.norm(true_pos - est_pos, axis=1)
+
+        # For GPS error, we need to handle the potential NaN values
+        gps_error = np.full_like(ekf_error, np.nan)
+        for i in range(len(true_pos)):
+            if not np.isnan(gps_pos[i, 0]) and not np.isnan(gps_pos[i, 1]):
+                gps_error[i] = np.linalg.norm(true_pos[i] - gps_pos[i])
+
+        # Plot both errors
+        plt.plot(self.history['step'], ekf_error, 'r-', label='EKF Error')
+        plt.plot(self.history['step'], gps_error, 'b--', label='GPS Error')
+
+        # Calculate and display average errors
+        avg_ekf_error = np.nanmean(ekf_error)
+        avg_gps_error = np.nanmean(gps_error)
+
+        # Add horizontal lines for average errors
+        plt.axhline(y=avg_ekf_error, color='r', linestyle=':', label=f'Avg EKF Error: {avg_ekf_error:.2f}m')
+        plt.axhline(y=avg_gps_error, color='b', linestyle=':', label=f'Avg GPS Error: {avg_gps_error:.2f}m')
+
+        plt.xlabel('Simulation Step')
+        plt.ylabel('Position Error (m)')
+        plt.title('Position Error Comparison: EKF vs GPS')
+        plt.legend()
         plt.grid(True)
+
+        # Add text with improvement percentage
+        improvement = (1 - avg_ekf_error / avg_gps_error) * 100
+        plt.text(0.5, 0.01, f'EKF improves accuracy by {improvement:.1f}%',
+                 horizontalalignment='center', verticalalignment='bottom',
+                 transform=plt.gca().transAxes, fontsize=10, bbox=dict(facecolor='white', alpha=0.5))
+
         plt.show()
-        print("stop")
+
+        # Third plot: Cumulative error distribution (CDF)
+        plt.figure(figsize=(10, 6))
+
+        # Sort errors for CDF
+        sorted_ekf_error = np.sort(ekf_error[~np.isnan(ekf_error)])
+        sorted_gps_error = np.sort(gps_error[~np.isnan(gps_error)])
+
+        # Calculate cumulative probabilities
+        p_ekf = np.arange(1, len(sorted_ekf_error) + 1) / len(sorted_ekf_error)
+        p_gps = np.arange(1, len(sorted_gps_error) + 1) / len(sorted_gps_error)
+
+        # Plot CDF
+        plt.plot(sorted_ekf_error, p_ekf, 'r-', label='EKF Error CDF')
+        plt.plot(sorted_gps_error, p_gps, 'b--', label='GPS Error CDF')
+
+        plt.xlabel('Position Error (m)')
+        plt.ylabel('Cumulative Probability')
+        plt.title('Error Distribution: EKF vs GPS')
+        plt.legend()
+        plt.grid(True)
+
+        # Calculate and display percentile values
+        ekf_95 = np.percentile(sorted_ekf_error, 95)
+        gps_95 = np.percentile(sorted_gps_error, 95)
+
+        plt.axvline(x=ekf_95, color='r', linestyle=':', label=f'EKF 95th %: {ekf_95:.2f}m')
+        plt.axvline(x=gps_95, color='b', linestyle=':', label=f'GPS 95th %: {gps_95:.2f}m')
+        plt.legend()
+
+        plt.show()
+        print("Analysis complete")
 # Usage remains:
 # for step_record in main_vehicle.position_history:
 #     ekf.process_step(step_record)
