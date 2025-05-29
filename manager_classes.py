@@ -4,9 +4,11 @@ from geopy.distance import geodesic
 from scipy.optimize import minimize
 from core_classes import Position, RSU, Vehicle, RSUManager
 from core_classes import Position, RSU, Vehicle
+import traci.constants
 from utility_functions import calculate_absolute_error, calculate_squared_error, cartesian_distance
 import numpy as np
 from scipy.linalg import block_diag
+
 
 class SimulationManager:
     """Manages the overall simulation."""
@@ -66,6 +68,41 @@ class SimulationManager:
             'position_w_error': position_w_error,
             'real_world_distance': real_world_distance
         }
+
+    def find_neighbours_replacement(self):
+
+        specific_car_id = self.main_vehicle_obj.id
+        nearby_vehicles = []
+
+        context = traci.vehicle.getContextSubscriptionResults(specific_car_id)
+
+        if context is None:
+            return nearby_vehicles
+
+        for veh_id, var_dict in context.items():
+            if traci.vehicle.getTypeID(veh_id) != "DEFAULT_VEHTYPE":
+                continue
+            pos = var_dict.get(traci.constants.VAR_POSITION)
+            if pos is None:
+                continue
+            x, y = pos
+            distance = np.linalg.norm(np.array(pos) - np.array(traci.vehicle.getPosition(specific_car_id)))
+            real_world_distance = self.comm_error_model.apply_error(distance)
+
+            if real_world_distance <= self.proximity_radius:
+                map_position = Position(x, y)
+                position_w_error = self.gps_error_model.apply_error((x, y))
+
+                snapshot = {
+                    'id': veh_id,
+                    'true_position': map_position,
+                    'position_w_error': position_w_error,
+                    'real_world_distance': real_world_distance
+                }
+
+                nearby_vehicles.append(snapshot)
+
+        return nearby_vehicles
 
     def find_neighbours(self):
         """Find nearby vehicles using get neighbors."""
@@ -133,9 +170,20 @@ class SimulationManager:
         random_vehicle = self.get_random_main_vehicle(initial_steps)
         self.main_vehicle_obj = Vehicle(random_vehicle)
 
+        subscription_done = False
+
         for step in range(initial_steps, self.num_steps):
 
             traci.simulationStep()
+
+            if not subscription_done and self.main_vehicle_obj.id in traci.vehicle.getIDList():
+                traci.vehicle.subscribeContext(
+                    self.main_vehicle_obj.id,
+                    traci.constants.CMD_GET_VEHICLE_VARIABLE,
+                    self.proximity_radius,
+                    [traci.constants.VAR_POSITION]
+                )
+                subscription_done = True
 
             if self.main_vehicle_obj.id in traci.vehicle.getIDList():
 
@@ -147,7 +195,7 @@ class SimulationManager:
 
                 # DSRC update
                 if step % self.dsrc_refresh_rate == 0:
-                    current_neighbours = self.find_neighbours()
+                    current_neighbours = self.find_neighbours_replacement()
                     nearby_rsus = self.find_nearby_rsu(vehicle_cartesian_position)
                 else:
                     current_neighbours = nearby_rsus = None
@@ -308,6 +356,22 @@ class DSRCPositionEstimator:
         plt.title('Vehicle Trajectory Comparison')
         plt.axis('equal')
         plt.show()
+        # Compute Euclidean distance error per step (true vs estimated and true vs GPS)
+        dsrc_errors = np.linalg.norm(true_pos - est_pos, axis=1)
+        gps_errors = np.linalg.norm(true_pos - gps_pos, axis=1)
+
+        # Mask out NaN values (from skipped estimates or missing GPS)
+        dsrc_errors = dsrc_errors[~np.isnan(dsrc_errors)]
+        gps_errors = gps_errors[~np.isnan(gps_errors)]
+
+        # Compute average errors
+        avg_dsrc_error = np.mean(dsrc_errors)
+        avg_gps_error = np.mean(gps_errors)
+        improvement_percent = 100 * (avg_gps_error - avg_dsrc_error) / avg_gps_error
+        print(f"[INFO] DSRC improves positioning by {improvement_percent:.1f}% on average")
+
+        print(f"[INFO] Average DSRC estimation error: {avg_dsrc_error:.2f} m")
+        print(f"[INFO] Average GPS error: {avg_gps_error:.2f} m")
 
 
 # class CalculationManager:
