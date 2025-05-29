@@ -104,34 +104,34 @@ class SimulationManager:
 
         return nearby_vehicles
 
-    def find_neighbours(self):
-        """Find nearby vehicles using get neighbors."""
-
-        specific_car_id = self.main_vehicle_obj.id
-
-        left_behind = traci.vehicle.getNeighbors(specific_car_id, 0)
-        right_behind = traci.vehicle.getNeighbors(specific_car_id, 1)
-        left_ahead = traci.vehicle.getNeighbors(specific_car_id, 2)
-        right_ahead = traci.vehicle.getNeighbors(specific_car_id, 3)
-
-        # Combine all neighbors with filtering before appending
-        """Here I want to create a list of Simple_Veicles class that are initialized to the following data:
-        Position(x,y,percision_radius)
-        real_world_distance i.e the distance after applying communication error,
-    
-        """
-        nearby_vehicles = []
-        for neighbor_set in [left_behind, right_behind, left_ahead, right_ahead]:
-            for neighbor_tuple in neighbor_set:
-
-                vehicle_id, distance = neighbor_tuple
-                real_world_distance = self.comm_error_model.apply_error(abs(distance))
-
-                if real_world_distance <= self.proximity_radius:
-                    neighbor_vehicle_snapshot = self.create_snapshot(vehicle_id, real_world_distance)
-                    nearby_vehicles.append(neighbor_vehicle_snapshot)
-
-        return nearby_vehicles
+    # def find_neighbours(self):
+    #     """Find nearby vehicles using get neighbors."""
+    #
+    #     specific_car_id = self.main_vehicle_obj.id
+    #
+    #     left_behind = traci.vehicle.getNeighbors(specific_car_id, 0)
+    #     right_behind = traci.vehicle.getNeighbors(specific_car_id, 1)
+    #     left_ahead = traci.vehicle.getNeighbors(specific_car_id, 2)
+    #     right_ahead = traci.vehicle.getNeighbors(specific_car_id, 3)
+    #
+    #     # Combine all neighbors with filtering before appending
+    #     """Here I want to create a list of Simple_Veicles class that are initialized to the following data:
+    #     Position(x,y,percision_radius)
+    #     real_world_distance i.e the distance after applying communication error,
+    #
+    #     """
+    #     nearby_vehicles = []
+    #     for neighbor_set in [left_behind, right_behind, left_ahead, right_ahead]:
+    #         for neighbor_tuple in neighbor_set:
+    #
+    #             vehicle_id, distance = neighbor_tuple
+    #             real_world_distance = self.comm_error_model.apply_error(abs(distance))
+    #
+    #             if real_world_distance <= self.proximity_radius:
+    #                 neighbor_vehicle_snapshot = self.create_snapshot(vehicle_id, real_world_distance)
+    #                 nearby_vehicles.append(neighbor_vehicle_snapshot)
+    #
+    #     return nearby_vehicles
 
     def find_nearby_rsu(self, vehicle_cartesian_position):
         """
@@ -227,8 +227,8 @@ class SimulationManager:
 
 
 class DSRCPositionEstimator:
-    def __init__(self, main_vehicle):
-        self.main_vehicle = main_vehicle
+    #def __init__(self):  #, main_vehicle):
+        # self.main_vehicle = main_vehicle
 
     @staticmethod
     def isBetter(positions, distances, precision_radii, step_record):
@@ -327,51 +327,51 @@ class DSRCPositionEstimator:
 
         return estimated_pos
 
-    def plot_results(self):
-        # Get all position data
-        true_pos = np.array([[step.real_position.x, step.real_position.y]
-                             for step in self.main_vehicle.position_history])
-        est_pos_list = []
-        for step in self.main_vehicle.position_history:
-            if step.measured_position is not None:
-                est = self.get_dsrc_position(step)
-                est_pos_list.append([est.x, est.y])
-            else:
-                est_pos_list.append([np.nan, np.nan])
-        est_pos = np.array(est_pos_list)
-        gps_pos = np.array([[step.measured_position.x, step.measured_position.y] if step.measured_position is not None
-                            else [np.nan, np.nan] for step in self.main_vehicle.position_history])
-
-        # First plot: Position trajectories
-        plt.figure(figsize=(10, 8))
-        plt.plot(true_pos[:, 0], true_pos[:, 1], 'b-', label='True Position')
-        valid = ~np.isnan(est_pos[:, 0])
-        plt.scatter(est_pos[valid, 0], est_pos[valid, 1], marker="*", color="red", label='DSRC Estimate')
-        valid = ~np.isnan(gps_pos[:, 0])
-        plt.scatter(gps_pos[valid, 0], gps_pos[valid, 1], marker='x', label='GPS')
-        plt.legend()
-        plt.grid(True)
-        plt.xlabel('X position (m)')
-        plt.ylabel('Y position (m)')
-        plt.title('Vehicle Trajectory Comparison')
-        plt.axis('equal')
-        plt.show()
-        # Compute Euclidean distance error per step (true vs estimated and true vs GPS)
-        dsrc_errors = np.linalg.norm(true_pos - est_pos, axis=1)
-        gps_errors = np.linalg.norm(true_pos - gps_pos, axis=1)
-
-        # Mask out NaN values (from skipped estimates or missing GPS)
-        dsrc_errors = dsrc_errors[~np.isnan(dsrc_errors)]
-        gps_errors = gps_errors[~np.isnan(gps_errors)]
-
-        # Compute average errors
-        avg_dsrc_error = np.mean(dsrc_errors)
-        avg_gps_error = np.mean(gps_errors)
-        improvement_percent = 100 * (avg_gps_error - avg_dsrc_error) / avg_gps_error
-        print(f"[INFO] DSRC improves positioning by {improvement_percent:.1f}% on average")
-
-        print(f"[INFO] Average DSRC estimation error: {avg_dsrc_error:.2f} m")
-        print(f"[INFO] Average GPS error: {avg_gps_error:.2f} m")
+    # def plot_results(self):
+    #     # Get all position data
+    #     true_pos = np.array([[step.real_position.x, step.real_position.y]
+    #                          for step in self.main_vehicle.position_history])
+    #     est_pos_list = []
+    #     for step in self.main_vehicle.position_history:
+    #         if step.measured_position is not None:
+    #             est = self.get_dsrc_position(step)
+    #             est_pos_list.append([est.x, est.y])
+    #         else:
+    #             est_pos_list.append([np.nan, np.nan])
+    #     est_pos = np.array(est_pos_list)
+    #     gps_pos = np.array([[step.measured_position.x, step.measured_position.y] if step.measured_position is not None
+    #                         else [np.nan, np.nan] for step in self.main_vehicle.position_history])
+    #
+    #     # First plot: Position trajectories
+    #     plt.figure(figsize=(10, 8))
+    #     plt.plot(true_pos[:, 0], true_pos[:, 1], 'b-', label='True Position')
+    #     valid = ~np.isnan(est_pos[:, 0])
+    #     plt.scatter(est_pos[valid, 0], est_pos[valid, 1], marker="*", color="red", label='DSRC Estimate')
+    #     valid = ~np.isnan(gps_pos[:, 0])
+    #     plt.scatter(gps_pos[valid, 0], gps_pos[valid, 1], marker='x', label='GPS')
+    #     plt.legend()
+    #     plt.grid(True)
+    #     plt.xlabel('X position (m)')
+    #     plt.ylabel('Y position (m)')
+    #     plt.title('Vehicle Trajectory Comparison')
+    #     plt.axis('equal')
+    #     plt.show()
+    #     # Compute Euclidean distance error per step (true vs estimated and true vs GPS)
+    #     dsrc_errors = np.linalg.norm(true_pos - est_pos, axis=1)
+    #     gps_errors = np.linalg.norm(true_pos - gps_pos, axis=1)
+    #
+    #     # Mask out NaN values (from skipped estimates or missing GPS)
+    #     dsrc_errors = dsrc_errors[~np.isnan(dsrc_errors)]
+    #     gps_errors = gps_errors[~np.isnan(gps_errors)]
+    #
+    #     # Compute average errors
+    #     avg_dsrc_error = np.mean(dsrc_errors)
+    #     avg_gps_error = np.mean(gps_errors)
+    #     improvement_percent = 100 * (avg_gps_error - avg_dsrc_error) / avg_gps_error
+    #     print(f"[INFO] DSRC improves positioning by {improvement_percent:.1f}% on average")
+    #
+    #     print(f"[INFO] Average DSRC estimation error: {avg_dsrc_error:.2f} m")
+    #     print(f"[INFO] Average GPS error: {avg_gps_error:.2f} m")
 
 
 # class CalculationManager:
@@ -606,7 +606,9 @@ import matplotlib.pyplot as plt
 
 
 class VehicleEKF:
-    def __init__(self, first_measurement):
+    def __init__(self, first_measurement, use_dsrc=True):
+        self.use_dsrc = use_dsrc
+        self.dsrc_pos_estimator = DSRCPositionEstimator()
         # State vector: [x, y, speed, heading, acceleration]
         self.state_dim = 5
 
@@ -633,6 +635,7 @@ class VehicleEKF:
         # Measurement noise - balanced to avoid jumps
         self.R_imu = np.diag([0.02, 0.05, 0.02])  # heading, acceleration, speed
         self.R_gps = np.diag([9.0, 9.0])  # GPS noise - tuned for smoother transitions
+        self.R_dsrc = np.diag([4.0, 4.0]) # tune to DSRC pos error
 
         # Time step (in seconds)
         self.dt = 0.1
@@ -743,6 +746,41 @@ class VehicleEKF:
         # Normalize heading
         self.x[3, 0] = np.arctan2(np.sin(self.x[3, 0]), np.cos(self.x[3, 0]))
 
+    def update_position_measurement(self, position_measurement, use_dsrc=True):
+        """
+        Update using an external position measurement (GPS, DSRC).
+
+        """
+        z = np.array([position_measurement.x, position_measurement.y]).reshape(-1, 1)
+        h = self.x[:2]
+
+        y = z - h
+
+        H = np.zeros((2, self.state_dim))
+        H[0, 0] = 1
+        H[1, 1] = 1
+
+        if use_dsrc:
+            R = self.R_dsrc
+        else:
+            R = self.R_gps
+
+        S = H @ self.P @ H.T + R
+        mahalanobis = y.T @ np.linalg.inv(S) @ y
+        if mahalanobis > 16.0:
+            print(
+                f"WARNING: Position measurement outlier rejected at step {self.step_count}. Distance: {mahalanobis[0, 0]:.2f}")
+            return
+        alpha = 0.7
+        K = alpha * self.P @ H.T @ np.linalg.inv(S)
+
+        self.x = self.x + K @ y
+        self.P = (np.eye(self.state_dim) - K @ H) @ self.P
+
+        # Update last GPS info for next time
+        self.last_gps_pos = z
+        self.last_gps_time = self.step_count
+
     def update_gps(self, gps_position):
         """Smoothed GPS update with outlier rejection."""
         z = np.array([gps_position.x, gps_position.y]).reshape(-1, 1)
@@ -792,7 +830,11 @@ class VehicleEKF:
 
         # GPS update every 10 steps
         if self.step_count % 10 == 0 and (step_record.measured_position is not None):
-            self.update_gps(step_record.measured_position)
+            if self.use_dsrc:
+                position_measurement = self.dsrc_pos_estimator.get_dsrc_position(step_record)
+                self.update_position_measurement(position_measurement) # self.update_gps(step_record.measured_position)
+            else:
+                self.update_position_measurement(step_record.measured_position, use_dsrc=False)
 
         # Save history
         self.history['true_position'].append([step_record.real_position.x, step_record.real_position.y])

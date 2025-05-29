@@ -83,8 +83,8 @@ if __name__ == "__main__":
     # for step_record in main_vehicle.position_history:
     #     if step_record.nearby_vehicles:
     #         print("hu")
-    DSRCPE = DSRCPositionEstimator(main_vehicle)
-    DSRCPE.plot_results()
+    # DSRCPE = DSRCPositionEstimator(main_vehicle)
+    # DSRCPE.plot_results()
     ekf = VehicleEKF(main_vehicle.position_history[0])
 
     for step_record in main_vehicle.position_history:
