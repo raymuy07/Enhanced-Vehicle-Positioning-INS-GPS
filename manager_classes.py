@@ -582,17 +582,25 @@ class PlottingManager:
         plt.plot(self.true_pos[:, 0], self.true_pos[:, 1], 'b-', label='True Position', zorder=3)
         plt.plot(self.est_pos[:, 0], self.est_pos[:, 1], 'r--', label='EKF Estimate', zorder=3)
         valid = ~np.isnan(self.gps_pos[:, 0])
-        plt.scatter(self.gps_pos[valid, 0], self.gps_pos[valid, 1], marker='.', label='GPS', zorder=4, s=7)
-        plt.legend()
+        plt.scatter(self.gps_pos[valid, 0], self.gps_pos[valid, 1], marker='x', label='GPS', zorder=4, s=30)
+        plt.legend(fontsize=16)
         plt.grid(True)
-        plt.xlabel('X position (m)')
-        plt.ylabel('Y position (m)')
-        plt.title('Vehicle Trajectory Comparison')
+        plt.xlabel('X position (m)', fontsize=18)
+        plt.ylabel('Y position (m)', fontsize=18)
+        plt.title('Vehicle Trajectory Comparison', fontsize=20)
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
         plt.axis('equal')
 
-        # Auto-zoom to fit the vehicle's trajectory
-        x_min, x_max = np.nanmin(self.true_pos[:, 0]), np.nanmax(self.true_pos[:, 0])
-        y_min, y_max = np.nanmin(self.true_pos[:, 1]), np.nanmax(self.true_pos[:, 1])
+        # Calculate percentiles to handle outliers
+        all_x = np.concatenate([self.true_pos[:, 0], self.est_pos[:, 0], self.gps_pos[valid, 0]])
+        all_y = np.concatenate([self.true_pos[:, 1], self.est_pos[:, 1], self.gps_pos[valid, 1]])
+
+        # Use 1st and 99th percentiles to exclude extreme outliers
+        x_min = np.percentile(all_x, 1)
+        x_max = np.percentile(all_x, 99)
+        y_min = np.percentile(all_y, 1)
+        y_max = np.percentile(all_y, 99)
 
         # Add some margin (5% of range)
         x_margin = (x_max - x_min) * 0.05
@@ -610,9 +618,11 @@ class PlottingManager:
         plt.plot(self.history['step'], self.ekf_error, 'r-', label='EKF Error')
         steps = np.array(self.history['step'])
         valid = ~np.isnan(self.gps_error)
-        plt.plot(steps[valid], np.array(self.gps_error)[valid], linestyle='-', color='gray', linewidth=0.5, alpha=0.3, label='GPS Error')
+        plt.plot(steps[valid], np.array(self.gps_error)[valid], linestyle='-', color='gray', linewidth=0.5, alpha=0.3,
+                 label='GPS Error')
         valid_dsrc = ~np.isnan(self.dsrc_error)
-        plt.plot(steps[valid_dsrc], np.array(self.dsrc_error)[valid_dsrc], linestyle='-', color='orange', linewidth=0.5, alpha=0.3, label='DSRC Error')
+        plt.plot(steps[valid_dsrc], np.array(self.dsrc_error)[valid_dsrc], linestyle='-', color='orange', linewidth=0.5,
+                 alpha=0.3, label='DSRC Error')
 
         # Calculate and display average errors
         avg_ekf_error = np.nanmean(self.ekf_error)
@@ -624,17 +634,19 @@ class PlottingManager:
         plt.axhline(y=avg_gps_error, color='b', linestyle=':', label=f'Avg GPS Error: {avg_gps_error:.2f}m')
         plt.axhline(y=avg_dsrc_error, color='darkorange', linestyle=':', label=f'Avg DSRC Error: {avg_dsrc_error:.2f}m')
 
-        plt.xlabel('Simulation Step')
-        plt.ylabel('Position Error (m)')
-        plt.title('Position Error Comparison: EKF vs GPS')
-        plt.legend()
+        plt.xlabel('Simulation Step', fontsize=18)
+        plt.ylabel('Position Error (m)', fontsize=18)
+        plt.title('Position Error Comparison: EKF vs GPS', fontsize=20)
+        plt.legend(fontsize=14)
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
         plt.grid(True)
 
         # Add text with improvement percentage
         improvement = (1 - avg_ekf_error / avg_gps_error) * 100
         plt.text(0.5, 0.01, f'EKF improves accuracy by {improvement:.1f}%',
                  horizontalalignment='center', verticalalignment='bottom',
-                 transform=plt.gca().transAxes, fontsize=10, bbox=dict(facecolor='white', alpha=0.5))
+                 transform=plt.gca().transAxes, fontsize=14, bbox=dict(facecolor='white', alpha=0.5))
 
         plt.show()
 
@@ -653,10 +665,12 @@ class PlottingManager:
         plt.plot(sorted_ekf_error, p_ekf, 'r-', label='EKF Error CDF')
         plt.plot(sorted_gps_error, p_gps, 'b--', label='GPS Error CDF')
 
-        plt.xlabel('Position Error (m)')
-        plt.ylabel('Cumulative Probability')
-        plt.title('Error Distribution: EKF vs GPS')
-        plt.legend()
+        plt.xlabel('Position Error (m)', fontsize=18)
+        plt.ylabel('Cumulative Probability', fontsize=18)
+        plt.title('Error Distribution: EKF vs GPS', fontsize=20)
+        plt.legend(fontsize=16)
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
         plt.grid(True)
 
         # Calculate and display percentile values
@@ -665,6 +679,6 @@ class PlottingManager:
 
         plt.axvline(x=ekf_95, color='r', linestyle=':', label=f'EKF 95th %: {ekf_95:.2f}m')
         plt.axvline(x=gps_95, color='b', linestyle=':', label=f'GPS 95th %: {gps_95:.2f}m')
-        plt.legend()
+        plt.legend(fontsize=16)
 
         plt.show()
