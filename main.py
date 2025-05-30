@@ -16,7 +16,7 @@ if __name__ == "__main__":
         simulation_type = 'Route_90'
     elif sim == 2:
         gps_error_std = 8  # Medium error – mid-sized city with some signal obstruction
-        simulation_type = 'haifa'
+        simulation_type = 'Haifa'
     elif sim == 3:
         gps_error_std = 12  # High error – dense urban area with significant multipath effects
         simulation_type = 'Manhattan'

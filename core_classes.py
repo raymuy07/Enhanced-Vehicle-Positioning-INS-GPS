@@ -1,7 +1,4 @@
-import numpy as np
-import traci
 from geopy.distance import geodesic
-
 from rsu_config import rsu_points_by_simulation
 
 
