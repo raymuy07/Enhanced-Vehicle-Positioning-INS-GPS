@@ -54,7 +54,7 @@ if __name__ == "__main__":
         'gps_refresh_rate': 10,  # the rate at which the GPS is updated
         'dsrc_refresh_rate': 5,
         'ins_refresh_rate': 1,
-        'number_of_steps': 800,
+        'number_of_steps': 2000,
         'gps_error_model_std': gps_error_std,  # Set based on scenario
         'communication_error_model_std': 2,
         'systematic_bias': 0.3,
