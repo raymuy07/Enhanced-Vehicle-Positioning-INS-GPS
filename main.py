@@ -1,4 +1,4 @@
-from manager_classes import SimulationManager, VehicleEKF, PlottingManager
+from manager_classes import SimulationManager, VehicleEKF, PlottingManager, DSRCPositionEstimator
 from error_classes import GPSErrorModel, CommunicationDistanceErrorModel
 
 if __name__ == "__main__":
@@ -68,27 +68,25 @@ if __name__ == "__main__":
     comm_error_model = CommunicationDistanceErrorModel(simulation_params['communication_error_model_std'],
                                                        simulation_params['systematic_bias'])
 
-
     simulation_manager = SimulationManager(simulation_params, simulation_type, gps_error_model, comm_error_model)
 
     ##TODO change the specific_car_id method to be more dynamic
     main_vehicle = simulation_manager.run_simulation(simulation_path)
 
     ##TODO analyze results and print them
-    ekf = VehicleEKF(main_vehicle.position_history[0])
+    dsrc_manager = DSRCPositionEstimator()
+    initial_step = main_vehicle.position_history[0]
+    initial_step.measured_position = dsrc_manager.get_dsrc_position(initial_step)
+    ekf = VehicleEKF(dsrc_manager, initial_step)
 
     for step_record in main_vehicle.position_history:
         ekf.process_step(step_record)
 
-    # ekf.plot_results()
     plotter = PlottingManager(ekf, net_path)
     plotter.plot_trajectory_comparison()
     plotter.plot_error_comparison()
     plotter.plot_cumulative_distribution()
     print("Analysis complete")
-
-        #
-        # return ekf
 
     # Note: data_sequence should be a list of vehicle_data dictionaries as shown in your format
     # Run the simulation with your actual data from SUMO
