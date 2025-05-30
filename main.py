@@ -1,8 +1,4 @@
-import traci
-import numpy as np
-
-from core_classes import RSU, Position, Vehicle
-from manager_classes import SimulationManager, VehicleEKF, DSRCPositionEstimator
+from manager_classes import SimulationManager, VehicleEKF, PlottingManager
 from error_classes import GPSErrorModel, CommunicationDistanceErrorModel
 
 if __name__ == "__main__":
@@ -50,6 +46,7 @@ if __name__ == "__main__":
 
     # Set simulation path based on selections
     simulation_path = f"Sumo/{simulation_type.lower()}_{traffic_type}/osm.sumocfg"
+    net_path = f"Sumo/{simulation_type.lower()}_{traffic_type}/osm.net.xml.gz"
     print(f"Using simulation path: {simulation_path}")
 
     # Step 3: Set simulation parameters
@@ -83,7 +80,13 @@ if __name__ == "__main__":
     for step_record in main_vehicle.position_history:
         ekf.process_step(step_record)
 
-    ekf.plot_results()
+    # ekf.plot_results()
+    plotter = PlottingManager(ekf, net_path)
+    plotter.plot_trajectory_comparison()
+    plotter.plot_error_comparison()
+    plotter.plot_cumulative_distribution()
+    print("Analysis complete")
+
         #
         # return ekf
 
