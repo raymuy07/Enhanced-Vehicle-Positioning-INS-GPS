@@ -78,13 +78,6 @@ if __name__ == "__main__":
     main_vehicle = simulation_manager.run_simulation(simulation_path)
 
     ##TODO analyze results and print them
-    # calc_manager = CalculationManager(main_vehicle)
-
-    # for step_record in main_vehicle.position_history:
-    #     if step_record.nearby_vehicles:
-    #         print("hu")
-    # DSRCPE = DSRCPositionEstimator(main_vehicle)
-    # DSRCPE.plot_results()
     ekf = VehicleEKF(main_vehicle.position_history[0])
 
     for step_record in main_vehicle.position_history:
