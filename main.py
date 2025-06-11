@@ -76,8 +76,8 @@ if __name__ == "__main__":
     ##TODO analyze results and print them
     dsrc_manager = DSRCPositionEstimator()
     initial_step = main_vehicle.position_history[0]
-    initial_step.measured_position = dsrc_manager.get_dsrc_position(initial_step)
-    ekf = VehicleEKF(dsrc_manager, initial_step)
+    ekf = VehicleEKF(dsrc_manager, initial_step, True,
+                     simulation_manager.gps_refresh_rate, simulation_manager.dsrc_refresh_rate)
 
     for step_record in main_vehicle.position_history:
         ekf.process_step(step_record)

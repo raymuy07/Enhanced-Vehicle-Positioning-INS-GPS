@@ -297,14 +297,17 @@ class DSRCPositionEstimator:
 
 
 class VehicleEKF:
-    def __init__(self, dsrc_pos_estimator, first_measurement, use_dsrc=True):
+    def __init__(self, dsrc_pos_estimator, first_measurement, use_dsrc, gps_update_rate, dsrc_update_rate):
         self.use_dsrc = use_dsrc
         self.dsrc_pos_estimator = dsrc_pos_estimator
         # State vector: [x, y, speed, heading, acceleration]
         self.state_dim = 5
 
         # Initial state estimate
-        pos = first_measurement.measured_position
+        if use_dsrc:
+            pos = self.dsrc_pos_estimator.get_dsrc_position(first_measurement)
+        else:
+            pos = first_measurement.measured_position
 
         # Convert SUMO heading (0° = North, clockwise) to standard math heading (0° = East, counterclockwise)
         heading_rad = np.radians(90 - first_measurement.heading)
@@ -356,7 +359,6 @@ class VehicleEKF:
         # Calculate expected movement per step
         dx = speed * np.cos(heading) * self.dt
         dy = speed * np.sin(heading) * self.dt
-
 
         # Detect if vehicle is stationary
         self.is_stationary = abs(speed) < self.stationary_threshold
