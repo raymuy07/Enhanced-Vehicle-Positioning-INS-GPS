@@ -11,7 +11,7 @@ import sumolib
 class SimulationManager:
     """Manages the overall simulation."""
 
-    def __init__(self, simulation_params, simulation_type, gps_error_model, comm_error_model):
+    def __init__(self, simulation_params, simulation_type, gps_error_model, comm_error_model, gps_outage):
 
         self.rsu_manager = None
         self.main_vehicle_obj = None
@@ -27,6 +27,9 @@ class SimulationManager:
         self.num_steps = simulation_params.get('number_of_steps', 500)
         self.proximity_radius = simulation_params.get('proximity_radius', 300)
         self.rsu_flag = simulation_params.get('rsu_flag', False)
+        self.gps_outage = []
+        if gps_outage:
+            self.gps_outage = range(self.num_steps//2 - 300, self.num_steps//2)
 
     ##TODO: Check if this function really necessary
     @staticmethod
@@ -171,7 +174,8 @@ class SimulationManager:
 
                 # GPS update
                 measured_position = self.gps_error_model.apply_error(
-                    vehicle_cartesian_position) if step % self.gps_refresh_rate == 0 else None
+                    vehicle_cartesian_position) if (step % self.gps_refresh_rate == 0
+                                                    and step not in self.gps_outage) else None
 
                 # Build the data dictionary
                 vehicle_data = {
@@ -598,8 +602,9 @@ class VehicleEKF:
 
 
 class PlottingManager:
-    def __init__(self, ekf=None, net_file=None, dsrc_flag=False):
+    def __init__(self, ekf=None, net_file=None, dsrc_flag=False, gps_outage=None):
         self.dsrc_flag = dsrc_flag
+        self.gps_outage = gps_outage or []
         self.net_file = net_file
         if ekf is not None:
             self.true_pos = np.array(ekf.history['true_position'])
@@ -706,6 +711,14 @@ class PlottingManager:
         plt.text(0.5, 0.01, f'EKF improves accuracy by {improvement:.1f}%',
                  horizontalalignment='center', verticalalignment='bottom',
                  transform=plt.gca().transAxes, fontsize=14, bbox=dict(facecolor='white', alpha=0.5))
+        if self.gps_outage:
+            outage_start = self.gps_outage[0]
+            outage_end = self.gps_outage[-1]
+            plt.axvspan(outage_start, outage_end, color='lightblue', alpha=0.2, zorder=0)
+            mid_x = (outage_start + outage_end) / 2
+            max_y = np.nanmax([*self.ekf_error, *self.gps_error, *self.dsrc_error])
+            plt.text(mid_x, max_y * 0.95, "GPS Outage", color='gray',
+                     fontsize=12, ha='center', va='bottom', alpha=0.7)
 
         plt.show()
 

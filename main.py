@@ -69,6 +69,17 @@ if __name__ == "__main__":
     else:
         use_rsu = False
 
+    print("Do you want to simulate GPS outage?")
+    print("1 - YES")
+    print("2 - NO")
+    gps_outage = int(input("Enter your choice (1-2): "))
+    if gps_outage == 1:
+        gps_outage = True
+    elif gps_outage == 2:
+        gps_outage = False
+    else:
+        raise ValueError(f"Invalid GPS outage choice")
+
     # Set simulation path based on selections
     simulation_path = f"Sumo/{simulation_type.lower()}_{traffic_type}/osm.sumocfg"
     net_path = f"Sumo/{simulation_type.lower()}_{traffic_type}/osm.net.xml.gz"
@@ -93,7 +104,7 @@ if __name__ == "__main__":
     comm_error_model = CommunicationDistanceErrorModel(simulation_params['communication_error_model_std'],
                                                        simulation_params['systematic_bias'])
 
-    simulation_manager = SimulationManager(simulation_params, simulation_type, gps_error_model, comm_error_model)
+    simulation_manager = SimulationManager(simulation_params, simulation_type, gps_error_model, comm_error_model, gps_outage)
 
     ##TODO change the specific_car_id method to be more dynamic
     main_vehicle = simulation_manager.run_simulation(simulation_path)
@@ -106,7 +117,7 @@ if __name__ == "__main__":
     for step_record in main_vehicle.position_history:
         ekf.process_step(step_record)
 
-    plotter = PlottingManager(ekf, net_path, use_dsrc)
+    plotter = PlottingManager(ekf, net_path, use_dsrc, simulation_manager.gps_outage)
     plotter.plot_trajectory_comparison()
     plotter.plot_error_comparison()
     plotter.plot_cumulative_distribution()
