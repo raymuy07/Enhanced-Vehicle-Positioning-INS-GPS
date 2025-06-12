@@ -44,6 +44,31 @@ if __name__ == "__main__":
 
     print(f"Selected traffic density: {traffic_type}")
 
+    # Step 3: Simulation attributes
+    print("Do you want to use DSRC protocol?")
+    print("1 - YES")
+    print("2 - NO")
+    use_dsrc = int(input("Enter your choice (1-2): "))
+    if use_dsrc == 1:
+        use_dsrc = True
+    elif use_dsrc == 2:
+        use_dsrc = False
+    else:
+        raise ValueError(f"Invalid DSRC choice")
+    if use_dsrc:
+        print("Do you want to simulate RSUs?")
+        print("1 - YES")
+        print("2 - NO")
+        use_rsu = int(input("Enter your choice (1-2): "))
+        if use_rsu == 1:
+            use_rsu = True
+        elif use_rsu == 2:
+            use_rsu = False
+        else:
+            raise ValueError(f"Invalid RSU choice")
+    else:
+        use_rsu = False
+
     # Set simulation path based on selections
     simulation_path = f"Sumo/{simulation_type.lower()}_{traffic_type}/osm.sumocfg"
     net_path = f"Sumo/{simulation_type.lower()}_{traffic_type}/osm.net.xml.gz"
@@ -59,7 +84,7 @@ if __name__ == "__main__":
         'communication_error_model_std': 2,
         'systematic_bias': 0.3,
         'proximity_radius': 300,
-        'rsu_flag': True
+        'rsu_flag': use_rsu
     }
     print(f"GPS error standard deviation set to: {gps_error_std}")
 
@@ -76,13 +101,12 @@ if __name__ == "__main__":
     ##TODO analyze results and print them
     dsrc_manager = DSRCPositionEstimator()
     initial_step = main_vehicle.position_history[0]
-    ekf = VehicleEKF(dsrc_manager, initial_step, True,
-                     simulation_manager.gps_refresh_rate, simulation_manager.dsrc_refresh_rate)
+    ekf = VehicleEKF(dsrc_manager, initial_step, use_dsrc)
 
     for step_record in main_vehicle.position_history:
         ekf.process_step(step_record)
 
-    plotter = PlottingManager(ekf, net_path)
+    plotter = PlottingManager(ekf, net_path, use_dsrc)
     plotter.plot_trajectory_comparison()
     plotter.plot_error_comparison()
     plotter.plot_cumulative_distribution()

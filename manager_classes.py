@@ -21,7 +21,7 @@ class SimulationManager:
         self.comm_error_model = comm_error_model
 
         self.gps_refresh_rate = simulation_params.get('gps_refresh_rate', 10)
-        self.dsrc_refresh_rate = simulation_params.get('dsrc_refresh_rate', 10)
+        self.dsrc_refresh_rate = simulation_params.get('dsrc_refresh_rate', 5)
         self.ins_refresh_rate = simulation_params.get('ins_refresh_rate', 1)
 
         self.num_steps = simulation_params.get('number_of_steps', 500)
@@ -198,7 +198,7 @@ class SimulationManager:
 class DSRCPositionEstimator:
 
     @staticmethod
-    def isBetter(positions, distances, precision_radii, step_record):
+    def isBetter(positions, distances, precision_radii, precision_radius):
         """
         Selects the best sources for triangulation and decides if they are enough for triangulation.
 
@@ -211,7 +211,7 @@ class DSRCPositionEstimator:
         sorted_distances = [distances[i] for i in index]
         sorted_precisions = [precision_radii[i] for i in index]
 
-        if sorted_precisions[2] > step_record.measured_position.precision_radius:
+        if sorted_precisions[2] > precision_radius:
             better = False
 
         return better, sorted_positions, sorted_distances, sorted_precisions
@@ -243,7 +243,7 @@ class DSRCPositionEstimator:
 
         return Position(result.x[0], result.x[1])
 
-    def get_dsrc_position(self, step_record, alpha=1.0):
+    def get_dsrc_position(self, step_record, last_pos=None, alpha=1.0):
         """
         Estimate position based on RSU and DSRC trilateration.
         This is work done in past project and modified by us.
@@ -258,6 +258,12 @@ class DSRCPositionEstimator:
         surrounding_positions = []
         distances = []
         error_radii = []
+        if step_record.measured_position:
+            pos = step_record.measured_position
+            pr = pos.precision_radius / 3
+        else:
+            pos = last_pos
+            pr = pos.precision_radius
 
         # Add RSUs
         for rsu in step_record.nearby_rsus:  # need to check whats is step_record.nearby_rsus
@@ -275,37 +281,37 @@ class DSRCPositionEstimator:
 
         # Minimum 3+ points needed
         if len(surrounding_positions) < 3:
-            return step_record.measured_position  # not reliable, maybe we need to return step_record.measured_position
+            return pos if step_record.measured_position else None  # not reliable
 
         better, sorted_positions, sorted_distances, sorted_precisions = self.isBetter(
-            surrounding_positions, distances, error_radii, step_record)
+            surrounding_positions, distances, error_radii, pos.precision_radius)
 
         if not better:
-            return step_record.measured_position
+            return pos if step_record.measured_position else None  # not reliable
 
         # Estimate position
         estimated_pos = self._trilaterate_position(
             sorted_positions,
             sorted_distances,
             sorted_precisions,
-            step_record.measured_position,
+            pos,
             alpha
         )
-        estimated_pos.precision_radius = step_record.measured_position.precision_radius/2
+        estimated_pos.precision_radius = pr
 
         return estimated_pos
 
 
 class VehicleEKF:
-    def __init__(self, dsrc_pos_estimator, first_measurement, use_dsrc, gps_update_rate, dsrc_update_rate):
+    def __init__(self, dsrc_pos_estimator, first_measurement, use_dsrc):
         self.use_dsrc = use_dsrc
         self.dsrc_pos_estimator = dsrc_pos_estimator
         # State vector: [x, y, speed, heading, acceleration]
         self.state_dim = 5
 
         # Initial state estimate
-        if use_dsrc:
-            pos = self.dsrc_pos_estimator.get_dsrc_position(first_measurement)
+        if self.use_dsrc:
+            pos = self.dsrc_pos_estimator.get_dsrc_position(first_measurement, None)
         else:
             pos = first_measurement.measured_position
 
@@ -522,8 +528,56 @@ class VehicleEKF:
             step_record.speed
         )
 
-        # GPS update every 10 steps
-        if self.step_count % 10 == 0 and (step_record.measured_position is not None):
+        # Position measurement update
+        pos = step_record.measured_position
+        last_pos = self.history['estimated_position'][-1] if self.history['estimated_position'] else None
+        if last_pos is not None:
+            last_pos = Position(last_pos[0], last_pos[1], 1.5)
+        if pos:
+            self.history['gps_position'].append([pos.x, pos.y])
+            if self.use_dsrc:
+                improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record)
+                self.history['dsrc_position'].append([improved_pos.x, improved_pos.y])
+                self.update_position_measurement(improved_pos)
+            else:
+                self.update_position_measurement(pos, use_dsrc=False)
+        elif self.use_dsrc and (step_record.nearby_rsus or step_record.nearby_vehicles) and last_pos:
+            improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record, last_pos)
+            if not improved_pos:
+                self.history['dsrc_position'].append(None)
+            else:
+                self.history['dsrc_position'].append([improved_pos.x, improved_pos.y])
+                self.update_position_measurement(improved_pos)
+            self.history['gps_position'].append(None)
+        else:
+            self.history['dsrc_position'].append(None)
+            self.history['gps_position'].append(None)
+
+        """pos = step_record.measured_position
+        if self.use_dsrc:
+            if pos:
+                self.history['gps_position'].append([pos.x, pos.y])
+                improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record, None)
+                self.update_position_measurement(improved_pos)
+                self.history['dsrc_position'].append([improved_pos.x, improved_pos.y])
+            else:
+                self.history['gps_position'].append(None)
+                if (step_record.nearby_rsus or step_record.nearby_vehicles) and self.history['estimated_position']:
+                    last_pos = self.history['estimated_position'][-1]
+                    last_pos = Position(last_pos[0], last_pos[1], 2)
+                    improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record, last_pos)
+                    self.history['dsrc_position'].append([improved_pos.x, improved_pos.y])
+                else:
+                    self.history['dsrc_position'].append(None)
+        else:
+            if pos:
+                self.history['gps_position'].append([pos.x, pos.y])
+                self.update_position_measurement(pos, use_dsrc=False)
+            else:
+                self.history['gps_position'].append(None)
+"""
+        """
+        if self.step_count % self.gps_update_rate == 0 and (step_record.measured_position is not None):
             if self.use_dsrc:
                 improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record)
                 self.update_position_measurement(improved_pos)
@@ -536,6 +590,7 @@ class VehicleEKF:
             if self.use_dsrc:
                 self.history['dsrc_position'].append(None)
             self.history['gps_position'].append(None)
+            """
 
         self.history['true_position'].append([step_record.real_position.x, step_record.real_position.y])
         self.history['estimated_position'].append(self.x[:2, 0])
@@ -543,7 +598,8 @@ class VehicleEKF:
 
 
 class PlottingManager:
-    def __init__(self, ekf=None, net_file=None):
+    def __init__(self, ekf=None, net_file=None, dsrc_flag=False):
+        self.dsrc_flag = dsrc_flag
         self.net_file = net_file
         if ekf is not None:
             self.true_pos = np.array(ekf.history['true_position'])
@@ -561,9 +617,10 @@ class PlottingManager:
             if not np.isnan(self.gps_pos[i, 0]) and not np.isnan(self.gps_pos[i, 1]):
                 self.gps_error[i] = np.linalg.norm(self.true_pos[i] - self.gps_pos[i])
         self.dsrc_error = np.full_like(self.ekf_error, np.nan)
-        for i in range(len(self.true_pos)):
-            if not np.isnan(self.dsrc_pos[i, 0]) and not np.isnan(self.dsrc_pos[i, 1]):
-                self.dsrc_error[i] = np.linalg.norm(self.true_pos[i] - self.dsrc_pos[i])
+        if self.dsrc_flag:
+            for i in range(len(self.true_pos)):
+                if not np.isnan(self.dsrc_pos[i, 0]) and not np.isnan(self.dsrc_pos[i, 1]):
+                    self.dsrc_error[i] = np.linalg.norm(self.true_pos[i] - self.dsrc_pos[i])
 
     def draw_network_background(self):
         if not self.net_file:
@@ -627,15 +684,14 @@ class PlottingManager:
         plt.plot(steps[valid_dsrc], np.array(self.dsrc_error)[valid_dsrc], linestyle='-', color='orange', linewidth=0.5,
                  alpha=0.3, label='DSRC Error')
 
-        # Calculate and display average errors
+        # Calculate and display average errors & add horizontal lines for average errors
         avg_ekf_error = np.nanmean(self.ekf_error)
-        avg_gps_error = np.nanmean(self.gps_error)
-        avg_dsrc_error = np.nanmean(self.dsrc_error)
-
-        # Add horizontal lines for average errors
         plt.axhline(y=avg_ekf_error, color='r', linestyle=':', label=f'Avg EKF Error: {avg_ekf_error:.2f}m')
+        avg_gps_error = np.nanmean(self.gps_error)
         plt.axhline(y=avg_gps_error, color='b', linestyle=':', label=f'Avg GPS Error: {avg_gps_error:.2f}m')
-        plt.axhline(y=avg_dsrc_error, color='darkorange', linestyle=':', label=f'Avg DSRC Error: {avg_dsrc_error:.2f}m')
+        if self.dsrc_flag:
+            avg_dsrc_error = np.nanmean(self.dsrc_error)
+            plt.axhline(y=avg_dsrc_error, color='darkorange', linestyle=':', label=f'Avg DSRC Error: {avg_dsrc_error:.2f}m')
 
         plt.xlabel('Simulation Step', fontsize=18)
         plt.ylabel('Position Error (m)', fontsize=18)

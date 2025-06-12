@@ -129,27 +129,3 @@ class RSUManager:
         for idx, (x, y) in enumerate(rsu_points):
             rsu = RSU(f"rsu_{idx}", Position(x, y))
             self.rsu_positions.append(rsu)
-
-    """def generate_rsu_grid_cartesian(self, point1, point2, point3, point4, interval_km=1):
-
-        # Define the boundaries
-        lat_min = min(point1[0], point2[0], point3[0], point4[0])
-        lat_max = max(point1[0], point2[0], point3[0], point4[0])
-        lon_min = min(point1[1], point2[1], point3[1], point4[1])
-        lon_max = max(point1[1], point2[1], point3[1], point4[1])
-
-        rsu_id = 0
-
-        current_lat = lat_min
-        while current_lat <= lat_max:
-            current_lon = lon_min
-            while current_lon <= lon_max:
-                x, y = traci.simulation.convertGeo(current_lat, current_lon, fromGeo=True)
-                rsu = RSU(f"rsu_{rsu_id}", x, y)
-                self.rsu_locations.append(rsu)
-                rsu_id += 1
-
-                # Move 1 kilometer east
-                current_lon = geodesic(kilometers=interval_km).destination((current_lat, current_lon), 90).longitude
-            # Move 1 kilometer north
-            current_lat = geodesic(kilometers=interval_km).destination((current_lat, lon_min), 0).latitude"""
