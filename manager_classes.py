@@ -485,39 +485,6 @@ class VehicleEKF:
         self.last_gps_pos = z
         self.last_gps_time = self.step_count
 
-    def update_gps(self, gps_position):
-        """Smoothed GPS update with outlier rejection."""
-        z = np.array([gps_position.x, gps_position.y]).reshape(-1, 1)
-        h = self.x[:2]
-
-        # Calculate innovation
-        y = z - h
-
-        H = np.zeros((2, self.state_dim))
-        H[0, 0] = 1
-        H[1, 1] = 1
-
-        S = H @ self.P @ H.T + self.R_gps
-
-        # Outlier rejection using Mahalanobis distance
-        mahalanobis = y.T @ np.linalg.inv(S) @ y
-        if mahalanobis > 16.0:  # Chi-square 99.9% confidence for 2 DOF
-            print(f"Warning: GPS outlier rejected at step {self.step_count}. Distance: {mahalanobis[0, 0]:.2f}")
-            return
-
-        # Progressive update for smoother transitions
-        # Instead of applying the full update at once, apply it gradually
-        alpha = 0.7  # Smoothing factor (1.0 = standard KF, smaller = smoother)
-
-        K = alpha * self.P @ H.T @ np.linalg.inv(S)
-
-        self.x = self.x + K @ y
-        self.P = (np.eye(self.state_dim) - K @ H) @ self.P
-
-        # Update last GPS info for next time
-        self.last_gps_pos = z
-        self.last_gps_time = self.step_count
-
     def process_step(self, step_record):
         """Process step with improved state handling."""
         self.step_count = step_record.step
@@ -534,9 +501,6 @@ class VehicleEKF:
 
         # Position measurement update
         pos = step_record.measured_position
-        last_pos = self.history['estimated_position'][-1] if self.history['estimated_position'] else None
-        if last_pos is not None:
-            last_pos = Position(last_pos[0], last_pos[1], 1.5)
         if pos:
             self.history['gps_position'].append([pos.x, pos.y])
             if self.use_dsrc:
@@ -545,56 +509,19 @@ class VehicleEKF:
                 self.update_position_measurement(improved_pos)
             else:
                 self.update_position_measurement(pos, use_dsrc=False)
-        elif self.use_dsrc and (step_record.nearby_rsus or step_record.nearby_vehicles) and last_pos:
-            improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record, last_pos)
-            if not improved_pos:
-                self.history['dsrc_position'].append(None)
-            else:
-                self.history['dsrc_position'].append([improved_pos.x, improved_pos.y])
-                self.update_position_measurement(improved_pos)
-            self.history['gps_position'].append(None)
         else:
-            self.history['dsrc_position'].append(None)
             self.history['gps_position'].append(None)
-
-        """pos = step_record.measured_position
-        if self.use_dsrc:
-            if pos:
-                self.history['gps_position'].append([pos.x, pos.y])
-                improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record, None)
-                self.update_position_measurement(improved_pos)
-                self.history['dsrc_position'].append([improved_pos.x, improved_pos.y])
-            else:
-                self.history['gps_position'].append(None)
-                if (step_record.nearby_rsus or step_record.nearby_vehicles) and self.history['estimated_position']:
-                    last_pos = self.history['estimated_position'][-1]
-                    last_pos = Position(last_pos[0], last_pos[1], 2)
-                    improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record, last_pos)
+            if self.use_dsrc and (step_record.nearby_rsus or step_record.nearby_vehicles):
+                est_x, est_y = self.x[0, 0], self.x[1, 0]
+                prior_pos = Position(est_x, est_y, 1.5)
+                improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record, prior_pos)
+                if improved_pos:
                     self.history['dsrc_position'].append([improved_pos.x, improved_pos.y])
+                    self.update_position_measurement(improved_pos)
                 else:
                     self.history['dsrc_position'].append(None)
-        else:
-            if pos:
-                self.history['gps_position'].append([pos.x, pos.y])
-                self.update_position_measurement(pos, use_dsrc=False)
             else:
-                self.history['gps_position'].append(None)
-"""
-        """
-        if self.step_count % self.gps_update_rate == 0 and (step_record.measured_position is not None):
-            if self.use_dsrc:
-                improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record)
-                self.update_position_measurement(improved_pos)
-                self.history['dsrc_position'].append([improved_pos.x, improved_pos.y])
-            else:
-                self.update_position_measurement(step_record.measured_position, use_dsrc=False)
-            pos = step_record.measured_position
-            self.history['gps_position'].append([pos.x, pos.y])
-        else:
-            if self.use_dsrc:
-                self.history['dsrc_position'].append(None)
-            self.history['gps_position'].append(None)
-            """
+                self.history['dsrc_position']. append(None)
 
         self.history['true_position'].append([step_record.real_position.x, step_record.real_position.y])
         self.history['estimated_position'].append(self.x[:2, 0])
