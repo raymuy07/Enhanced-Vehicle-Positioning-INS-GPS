@@ -1,7 +1,4 @@
-import numpy as np
-import traci
 from geopy.distance import geodesic
-
 from rsu_config import rsu_points_by_simulation
 
 
@@ -103,48 +100,32 @@ class StepRecord:
 
 
 class RSU:
-    def __init__(self, rsu_id, x, y):
+    def __init__(self, rsu_id, position):
         self.id = rsu_id
-        self.x = x  ##  might need to change from x, y attributes to position attribute.
-        self.y = y
+        self.position = position
 
     def __repr__(self):
-        return f"RSU(id={self.id}, x={self.x}, y={self.y})"
+        return f"RSU(id={self.id}, x={self.position.x}, y={self.position.y})"
 
 
 class RSUManager:
 
     def __init__(self, simulation_type, rsu_flag, reception_radius):
         self.reception_radius = reception_radius
-        self.rsu_locations = []
+        self.rsu_positions = []
 
         rsu_points = rsu_points_by_simulation.get(simulation_type)
 
         if rsu_flag and rsu_points:
-            self.generate_rsu_grid_cartesian(*rsu_points)
+            self.generate_rsus_from_list(rsu_points)
+
         else:
             print("No RSUs generated — RSU flag is off or no points provided.")
 
-    def generate_rsu_grid_cartesian(self, point1, point2, point3, point4, interval_km=1):
-
-        # Define the boundaries
-        lat_min = min(point1[0], point2[0], point3[0], point4[0])
-        lat_max = max(point1[0], point2[0], point3[0], point4[0])
-        lon_min = min(point1[1], point2[1], point3[1], point4[1])
-        lon_max = max(point1[1], point2[1], point3[1], point4[1])
-
-        rsu_id = 0
-
-        current_lat = lat_min
-        while current_lat <= lat_max:
-            current_lon = lon_min
-            while current_lon <= lon_max:
-                x, y = traci.simulation.convertGeo(current_lat, current_lon, fromGeo=True)
-                rsu = RSU(f"rsu_{rsu_id}", x, y)
-                self.rsu_locations.append(rsu)
-                rsu_id += 1
-
-                # Move 1 kilometer east
-                current_lon = geodesic(kilometers=interval_km).destination((current_lat, current_lon), 90).longitude
-            # Move 1 kilometer north
-            current_lat = geodesic(kilometers=interval_km).destination((current_lat, lon_min), 0).latitude
+    def generate_rsus_from_list(self, rsu_points):
+        """
+        Converts a list of (lat, lon) points to RSU objects.
+        """
+        for idx, (x, y) in enumerate(rsu_points):
+            rsu = RSU(f"rsu_{idx}", Position(x, y))
+            self.rsu_positions.append(rsu)

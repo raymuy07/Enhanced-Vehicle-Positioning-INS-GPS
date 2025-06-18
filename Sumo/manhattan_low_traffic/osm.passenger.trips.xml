@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2025-05-18 23:18:08.341013 by randomTrips.py v1_22_0+0002-63e50f52594
+<configuration>
+    <net-file value="osm.net.xml"/>
+    <output-trip-file value="low_traffic.trips.xml"/>
+    <prefix value="veh"/>
+    <min-distance value="1000.0"/>
+    <validate value="True"/>
+    <end value="2.0"/>
+    <insertion-density value="1000.0"/>
+</configuration>
+-->
+
+<!-- generated on 2025-05-18 23:18:08 by Eclipse SUMO duarouter Version 1.22.0
+<duarouterConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/duarouterConfiguration.xsd">
+
+    <input>
+        <net-file value="osm.net.xml"/>
+        <route-files value="low_traffic.trips.xml"/>
+    </input>
+
+    <output>
+        <output-file value="low_traffic.trips.xml.tmp"/>
+        <alternatives-output value="NUL"/>
+        <write-trips value="true"/>
+    </output>
+
+    <time>
+        <begin value="0.0"/>
+        <end value="2.0"/>
+    </time>
+
+    <report>
+        <no-warnings value="true"/>
+        <ignore-errors value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+</duarouterConfiguration>
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <trip id="veh0" depart="0.00" from="420892265#0" to="-46520921#4"/>
+    <trip id="veh1" depart="0.02" from="1308875366#2" to="458166897#7"/>
+    <trip id="veh2" depart="0.05" from="-421851201#2" to="1211049195#0"/>
+    <trip id="veh3" depart="0.07" from="499172074#16" to="458180199#0"/>
+    <trip id="veh4" depart="0.10" from="1308875367#0" to="46518740"/>
+    <trip id="veh5" depart="0.12" from="584971503#0" to="542257430#0"/>
+    <trip id="veh6" depart="0.15" from="226041012#3" to="1136391283#0"/>
+    <trip id="veh7" depart="0.17" from="945384088#1" to="226041011#1"/>
+    <trip id="veh8" depart="0.20" from="1043336433#0" to="1049841322#0"/>
+    <trip id="veh9" depart="0.22" from="671208358#21" to="46522002#0"/>
+    <trip id="veh10" depart="0.25" from="588157336#0" to="5670348"/>
+    <trip id="veh11" depart="0.27" from="658583340#0" to="46579578#0"/>
+    <trip id="veh12" depart="0.30" from="686125782#6" to="464516471#13"/>
+    <trip id="veh13" depart="0.32" from="1030119891#0" to="1321771943#0"/>
+    <trip id="veh14" depart="0.34" from="169267543#0" to="808190588#0"/>
+    <trip id="veh15" depart="0.37" from="1165644579#0" to="5670348"/>
+    <trip id="veh16" depart="0.39" from="1136460179#0" to="375165500#0"/>
+    <trip id="veh17" depart="0.42" from="976050707#0" to="497165753#6"/>
+    <trip id="veh18" depart="0.44" from="46240204#0" to="525729009#0"/>
+    <trip id="veh19" depart="0.47" from="1320234485#0" to="-496986969#3"/>
+    <trip id="veh20" depart="0.49" from="68674962#29" to="196116976#6"/>
+    <trip id="veh21" depart="0.52" from="167922077#0" to="1376704198#6"/>
+    <trip id="veh22" depart="0.54" from="46334594#6" to="167922077#0"/>
+    <trip id="veh23" depart="0.57" from="420356173#0" to="1308875367#0"/>
+    <trip id="veh24" depart="0.59" from="992603347" to="458180181#0"/>
+    <trip id="veh25" depart="0.62" from="1040888764#0" to="-587355676#1"/>
+    <trip id="veh26" depart="0.64" from="1051846230#0" to="496989355#0"/>
+    <trip id="veh27" depart="0.66" from="1052631409#0" to="420892272#0"/>
+    <trip id="veh28" depart="0.69" from="68674962#26" to="167922077#0"/>
+    <trip id="veh29" depart="0.71" from="458177130#0" to="1198594028#0"/>
+    <trip id="veh30" depart="0.74" from="803047267#0" to="686125781#8"/>
+    <trip id="veh31" depart="0.76" from="46525065#3" to="1135614655#0"/>
+    <trip id="veh32" depart="0.79" from="-36185649" to="808190577#0"/>
+    <trip id="veh33" depart="0.81" from="68674962#32" to="814278019#0"/>
+    <trip id="veh34" depart="0.84" from="1025734019#0" to="5672951#0"/>
+    <trip id="veh35" depart="0.86" from="452322756#0" to="458180199#5"/>
+    <trip id="veh36" depart="0.89" from="167922077#0" to="686125782#0"/>
+    <trip id="veh37" depart="0.91" from="988977545#6" to="497251086#0"/>
+    <trip id="veh38" depart="0.94" from="420899373" to="458180186#0"/>
+    <trip id="veh39" depart="0.96" from="1320234485#0" to="710571392#3"/>
+    <trip id="veh40" depart="0.98" from="686125782#0" to="1025734020#0"/>
+    <trip id="veh41" depart="1.01" from="1352944235#0" to="505582406#0"/>
+    <trip id="veh42" depart="1.03" from="1272613981" to="1106471568#0"/>
+    <trip id="veh43" depart="1.06" from="814278021#0" to="464515890"/>
+    <trip id="veh44" depart="1.08" from="448686048#0" to="569345502#3"/>
+    <trip id="veh45" depart="1.11" from="1049845754#0" to="420892266#0"/>
+    <trip id="veh46" depart="1.13" from="420892266#0" to="422298615#0"/>
+    <trip id="veh47" depart="1.16" from="968513230#0" to="1049841322#3"/>
+    <trip id="veh48" depart="1.18" from="686125782#6" to="1376935153#0"/>
+    <trip id="veh49" depart="1.21" from="420892265#0" to="194926855#0"/>
+    <trip id="veh50" depart="1.23" from="1376935153#0" to="743358445#2"/>
+    <trip id="veh51" depart="1.26" from="420906743#0" to="671208358#3"/>
+    <trip id="veh52" depart="1.28" from="460585328#11" to="-992603349"/>
+    <trip id="veh53" depart="1.30" from="993383311" to="618990022#8"/>
+    <trip id="veh54" depart="1.33" from="962831195" to="803047267#0"/>
+    <trip id="veh55" depart="1.35" from="671208358#3" to="1136460181#0"/>
+    <trip id="veh56" depart="1.38" from="456409017#3" to="127693103#0"/>
+    <trip id="veh57" depart="1.40" from="420496090#0" to="1022822153#0"/>
+    <trip id="veh58" depart="1.43" from="375165666#0" to="968513229#0"/>
+    <trip id="veh59" depart="1.45" from="167922077#0" to="569345502#3"/>
+    <trip id="veh60" depart="1.48" from="945384088#1" to="988977545#3"/>
+    <trip id="veh61" depart="1.50" from="460585328#8" to="5670029#7"/>
+    <trip id="veh62" depart="1.53" from="1135661892#0" to="195743336#0"/>
+    <trip id="veh63" depart="1.55" from="962831195" to="464516471#4"/>
+    <trip id="veh64" depart="1.58" from="458180199#2" to="5672036#3"/>
+    <trip id="veh65" depart="1.60" from="1022822152#0" to="46482602#2"/>
+    <trip id="veh67" depart="1.65" from="46521998#0" to="46579578#0"/>
+    <trip id="veh68" depart="1.67" from="458180191#0" to="808190587#0"/>
+    <trip id="veh69" depart="1.70" from="1222356566#0" to="5670029#10"/>
+    <trip id="veh70" depart="1.72" from="196116976#6" to="5672149#0"/>
+    <trip id="veh71" depart="1.75" from="992603347" to="988977545#6"/>
+    <trip id="veh72" depart="1.77" from="167922077#0" to="808190584#3"/>
+    <trip id="veh73" depart="1.80" from="46538371#0" to="968513230#0"/>
+    <trip id="veh74" depart="1.82" from="499172074#4" to="-1320549615#1"/>
+    <trip id="veh75" depart="1.85" from="511699176#0" to="812949647#3"/>
+    <trip id="veh76" depart="1.87" from="1051744778#0" to="458180200#0"/>
+    <trip id="veh77" depart="1.90" from="194920158#0" to="46522003#0"/>
+    <trip id="veh78" depart="1.92" from="497165753#9" to="167922077#0"/>
+    <trip id="veh79" depart="1.94" from="671208358#18" to="1037772010#0"/>
+    <trip id="veh80" depart="1.97" from="420892266#0" to="194926854#0"/>
+    <trip id="veh81" depart="1.99" from="-1320232776#1" to="5673461#7"/>
+</routes>
