@@ -21,7 +21,7 @@ class SimulationManager:
         self.comm_error_model = comm_error_model
 
         self.gps_refresh_rate = simulation_params.get('gps_refresh_rate', 10)
-        self.dsrc_refresh_rate = simulation_params.get('dsrc_refresh_rate', 5)
+        self.dsrc_refresh_rate = simulation_params.get('dsrc_refresh_rate', 2)
         self.ins_refresh_rate = simulation_params.get('ins_refresh_rate', 1)
 
         self.num_steps = simulation_params.get('number_of_steps', 500)

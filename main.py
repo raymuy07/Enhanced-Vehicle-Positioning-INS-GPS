@@ -88,7 +88,7 @@ if __name__ == "__main__":
     # Step 3: Set simulation parameters
     simulation_params = {
         'gps_refresh_rate': 10,  # the rate at which the GPS is updated
-        'dsrc_refresh_rate': 5,
+        'dsrc_refresh_rate': 2,
         'ins_refresh_rate': 1,
         'number_of_steps': 2000,
         'gps_error_model_std': gps_error_std,  # Set based on scenario
