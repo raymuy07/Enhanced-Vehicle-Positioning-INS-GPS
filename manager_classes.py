@@ -7,6 +7,7 @@ from core_classes import Position, Vehicle, RSUManager
 from utility_functions import cartesian_distance
 import traci.constants
 import sumolib
+import pandas as pd
 
 
 class SimulationManager:
@@ -614,73 +615,132 @@ class PlottingManager:
                                      title=f'Vehicle {veh_id} Trajectory')
 
     def plot_mean_error_with_band(self):
-        def _plot(col, color, label, min_samples=1):
-            # Align on index instead of assuming full length
-            step_index = self.mean_step.index
+        def _plot(col, color, label, min_samples=1, split_outage=False):
+            """Draw mean ± σ band for `col`."""
+            if col not in self.mean_step.columns:
+                return
 
             mean = self.mean_step[col]
             std = self.std_step[col]
             n = self.count_step[col]
 
-            valid_mask = (n >= min_samples) & mean.notna()
+            x = mean.index.to_numpy()
+            y = mean.to_numpy()
+            y_low = y - std.to_numpy()
+            y_high = y + std.to_numpy()
 
-            x = mean.index[valid_mask]
-            y = mean[valid_mask]
-            y_low = (mean - std)[valid_mask]
-            y_high = (mean + std)[valid_mask]
+            valid_common = (n >= min_samples) & ~np.isnan(y)
 
-            if len(x) > 0:
-                plt.plot(x, y, color=color, label=label)
-                plt.fill_between(x, y_low, y_high, color=color, alpha=0.18)
+            if not (split_outage and self.gps_outage):
+                mask = valid_common
+                plt.plot(x[mask], y[mask], color=color, lw=1.5, label=label)
+                plt.fill_between(x[mask], y_low[mask], y_high[mask],
+                                 color=color, alpha=0.12)
+                return
 
-        plt.figure(figsize=(10, 6))
+            o_start, o_end = self.gps_outage[0], self.gps_outage[-1]
+            mask_before = valid_common & (x <= o_start)
+            mask_after = valid_common & (x >= o_end)
 
-        _plot("ekf_error",  "r",      "EKF mean ±1σ")
-        _plot("gps_error",  "k",      "GPS mean ±1σ")
+            for m in [mask_before, mask_after]:
+                if m.any():
+                    plt.plot(x[m], y[m], color=color, lw=1.5, label=label)
+                    plt.fill_between(x[m], y_low[m], y_high[m],
+                                     color=color, alpha=0.12)
+                    label = "_nolegend_"
+
+        plt.figure(figsize=(10, 5))
+        _plot("ekf_error", "tab:red", "EKF mean ±1σ")
+        _plot("gps_error", "tab:blue", "GPS mean ±1σ", split_outage=True)
         if self.dsrc_flag and "dsrc_error" in self.mean_step:
             _plot("dsrc_error", "orange", "DSRC mean ±1σ", min_samples=3)
         if self.gps_outage:
-            plt.axvspan(self.gps_outage[0], self.gps_outage[-1],
-                        color='lightblue', alpha=0.2, zorder=0)
+            o_start, o_end = self.gps_outage[0], self.gps_outage[-1]
+            plt.axvspan(o_start, o_end,
+                        color='lightblue', alpha=0.25, zorder=0)
+            ax = plt.gca()
+            x_mid = (o_start + o_end) / 2  # middle of the span
+            y_top = ax.get_ylim()[1]  # current top of y-axis
+            ax.text(x_mid, y_top * 0.95,  # 95 % up the y-axis
+                    "GPS outage",
+                    ha='center', va='top',
+                    fontsize=12, color='gray', alpha=0.8)
 
         plt.xlabel("Simulation Step", fontsize=14)
         plt.ylabel("Position Error (m)", fontsize=14)
         plt.title("Mean ± 1σ Position Error", fontsize=16)
-        plt.grid(True)
-        plt.legend(fontsize=12)
+        plt.grid(True, alpha=0.3)
+        plt.legend()
         plt.tight_layout()
         plt.show()
 
     def plot_error_cdf(self):
         plt.figure(figsize=(10, 6))
 
-        for col, color, label in [
-            ("ekf_error", 'r', 'EKF'),
-            ("gps_error", 'k', 'GPS'),
-            ("dsrc_error", 'orange', 'DSRC') if self.dsrc_flag else (None, None, None)
-        ]:
-            if col is None:  # DSRC disabled
-                continue
+        def add_method(values, color, label_base):
+            values = pd.Series(values).dropna()
+            if values.empty:
+                return
 
-            vals = self.all_steps[col].dropna().to_numpy()
-            if len(vals) == 0:
-                continue
+            sorted_vals = np.sort(values)
+            probs = np.linspace(1 / len(sorted_vals), 1, len(sorted_vals))
+            mean_val = sorted_vals.mean()
+            q95_val = np.percentile(sorted_vals, 95)
 
-            vals_sorted = np.sort(vals)
-            p = np.linspace(0, 1, len(vals_sorted), endpoint=False) + 1 / len(vals_sorted)
+            plt.plot(sorted_vals, probs,
+                     label=f"{label_base} (μ={mean_val:.2f} m, q95={q95_val:.2f} m)",
+                     color=color)
+            plt.axvline(mean_val, color=color, ls=':', lw=1)
+            plt.axvline(q95_val, color=color, ls='--', lw=1)
 
-            plt.plot(vals_sorted, p, color=color, label=f"{label} CDF")
+        # GPS
+        add_method(self.all_steps["gps_error"], "tab:blue", "GPS")
+        # DSRC (if enabled)
+        if self.dsrc_flag and "dsrc_error" in self.all_steps.columns:
+            add_method(self.all_steps["dsrc_error"], "tab:orange", "DSRC")
+        # EKF
+        add_method(self.all_steps["ekf_error"], "tab:red", "EKF")
 
-            # optional percentile marker
-            p95 = np.percentile(vals_sorted, 95)
-            plt.axvline(p95, color=color, ls=':', alpha=0.6)
-            plt.text(p95, 0.95, f"{label} 95%={p95:.2f} m",
-                     color=color, rotation=90, va='top', ha='right', fontsize=9)
-
-        plt.xlabel("Absolute Position Error (m)", fontsize=14)
-        plt.ylabel("Cumulative Probability", fontsize=14)
-        plt.title("Error CDF across all vehicles & steps", fontsize=16)
-        plt.grid(True)
-        plt.legend(fontsize=12)
+        plt.xlabel("Absolute position error (m)")
+        plt.ylabel("Cumulative probability")
+        plt.title("Error CDF  (μ = mean, q95 = 95th percentile)")
+        plt.grid(True, alpha=0.3)
+        plt.legend()
         plt.tight_layout()
         plt.show()
+
+    def plot_summary_table(self):
+        """
+        Display a summary statistics table for GPS, EKF, and DSRC errors.
+        """
+        error_cols = ["gps_error"]
+        if self.dsrc_flag and "dsrc_error" in self.all_steps.columns:
+            error_cols.append("dsrc_error")
+        error_cols.append("ekf_error")
+
+        mask_gps_valid = self.all_steps["gps_error"].notna()
+        summary = (
+            self.all_steps.loc[mask_gps_valid, error_cols].agg(
+                ["mean", "median", lambda s: s.quantile(0.95), "max"]).rename(
+                index={"<lambda>": "q95"}).round(2)
+        )
+
+        # Build table figure
+        fig, ax = plt.subplots(figsize=(8, 2))
+        ax.axis('off')
+        ax.set_title("Error Summary (meters)", fontsize=16, pad=10)
+
+        table = plt.table(
+            cellText=summary.values,
+            rowLabels=summary.index,
+            colLabels=summary.columns,
+            cellLoc='center',
+            loc='center'
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(14)
+        table.scale(1.2, 1.5)
+
+        plt.tight_layout()
+        plt.show()
+

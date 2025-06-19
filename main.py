@@ -88,7 +88,7 @@ if __name__ == "__main__":
 
     # Step 3: Set simulation parameters
     simulation_params = {
-        'num_vehicles_to_track': 50,
+        'num_vehicles_to_track': 30,
         'gps_refresh_rate': 10,  # the rate at which the GPS is updated
         'dsrc_refresh_rate': 2,
         'ins_refresh_rate': 1,
@@ -137,15 +137,6 @@ if __name__ == "__main__":
     std_step = agg.xs('std', level=1, axis=1)
     count_step = agg.xs('count', level=1, axis=1)
 
-    mask_gps_valid = all_steps["gps_error"].notna()
-    summary = (
-        all_steps.loc[mask_gps_valid, ["gps_error", "ekf_error"]]
-        .agg(["mean", "median", lambda s: s.quantile(.95), "max"])
-        .rename(index={"<lambda>": "q95"})
-    )
-
-    print("\n### summary (meters) ###\n", summary)
-
     plotter = PlottingManager(mean_step, std_step, count_step,
                               all_steps,
                               net_file=net_path,
@@ -155,6 +146,7 @@ if __name__ == "__main__":
         plotter.plot_trajectory_comparison(vehicle_objs[i].id, ekf_objs[i])
     plotter.plot_mean_error_with_band()
     plotter.plot_error_cdf()
+    plotter.plot_summary_table()
     print("Analysis complete")
 
     # Note: data_sequence should be a list of vehicle_data dictionaries as shown in your format
