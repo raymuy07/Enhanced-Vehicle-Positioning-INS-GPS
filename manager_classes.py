@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from core_classes import Position, Vehicle, RSUManager
+from utility_functions import cartesian_distance
 import traci.constants
 import sumolib
 
@@ -14,12 +15,14 @@ class SimulationManager:
     def __init__(self, simulation_params, simulation_type, gps_error_model, comm_error_model, gps_outage):
 
         self.rsu_manager = None
-        self.main_vehicle_obj = None
+        self.vehicle_objs = None
+        self.tracked_ids = None
 
         self.simulation_type = simulation_type
         self.gps_error_model = gps_error_model
         self.comm_error_model = comm_error_model
 
+        self.num_vehicles_to_track = simulation_params.get('num_vehicles_to_track', 1)
         self.gps_refresh_rate = simulation_params.get('gps_refresh_rate', 10)
         self.dsrc_refresh_rate = simulation_params.get('dsrc_refresh_rate', 2)
         self.ins_refresh_rate = simulation_params.get('ins_refresh_rate', 1)
@@ -31,30 +34,14 @@ class SimulationManager:
         if gps_outage:
             self.gps_outage = range(self.num_steps//2 - 300, self.num_steps//2)
 
-    ##TODO: Check if this function really necessary
     @staticmethod
-    def get_random_main_vehicle(initial_steps):
-        """This function is for making our simulation more relaistic
-        instead it will focus on the same vehicle all the time, we want
-        to select a random vehicle each simulation.
-
-        arg: initial_steps: it's the amount of steps the simulation will run before
-        choosing the main vehicle.
-        """
-        vehicle_ids = None
-        random_vehicle = None
-
-        for step in range(initial_steps):
+    def get_random_main_vehicles(initial_steps, n):
+        for _ in range(initial_steps):
             traci.simulationStep()
-            vehicle_ids = traci.vehicle.getIDList()
-
-        if vehicle_ids:
-            random_vehicle = random.choice(vehicle_ids)
-
-        if random_vehicle:
-            return random_vehicle
-        else:
-            print("Error:couldn't choose random vehicle.")
+        ids = traci.vehicle.getIDList()
+        if not ids:
+            raise RuntimeError("No vehicles in the scenario")
+        return random.sample(ids, min(n, len(ids)))
 
     def create_snapshot(self, neighbor_id, real_world_distance):
         """Create a snapshot of the vehicle's current state."""
@@ -70,16 +57,12 @@ class SimulationManager:
             'real_world_distance': real_world_distance
         }
 
-    def find_neighbours(self):
-
-        specific_car_id = self.main_vehicle_obj.id
-        nearby_vehicles = []
-
-        context = traci.vehicle.getContextSubscriptionResults(specific_car_id)
-
+    def find_neighbours(self, veh_id):
+        context = traci.vehicle.getContextSubscriptionResults(veh_id)
         if context is None:
-            return nearby_vehicles
+            return []
 
+        neighbors = []
         for veh_id, var_dict in context.items():
             if traci.vehicle.getTypeID(veh_id) != "DEFAULT_VEHTYPE":
                 continue
@@ -87,7 +70,7 @@ class SimulationManager:
             if pos is None:
                 continue
             x, y = pos
-            distance = np.linalg.norm(np.array(pos) - np.array(traci.vehicle.getPosition(specific_car_id)))
+            distance = np.linalg.norm(np.array(pos) - np.array(traci.vehicle.getPosition(veh_id)))
             real_world_distance = self.comm_error_model.apply_error(distance)
 
             if real_world_distance <= self.proximity_radius:
@@ -101,9 +84,9 @@ class SimulationManager:
                     'real_world_distance': real_world_distance
                 }
 
-                nearby_vehicles.append(snapshot)
+                neighbors.append(snapshot)
 
-        return nearby_vehicles
+        return neighbors
 
     def find_nearby_rsu(self, vehicle_cartesian_position):
         """
@@ -131,7 +114,6 @@ class SimulationManager:
 
         initial_steps = 10
 
-
         # Start SUMO
         traci.start(["sumo", "-c", simulation_path])
 
@@ -139,64 +121,61 @@ class SimulationManager:
         self.rsu_manager = RSUManager(self.simulation_type, self.rsu_flag, self.proximity_radius)
 
         # initialize the random vehicle
-        random_vehicle = self.get_random_main_vehicle(initial_steps)
-        self.main_vehicle_obj = Vehicle(random_vehicle)
+        self.tracked_ids = self.get_random_main_vehicles(initial_steps, self.num_vehicles_to_track)
+        self.vehicle_objs = {vid: Vehicle(vid) for vid in self.tracked_ids}
+        subscribed = set()
 
-        subscription_done = False
-
+        active_ids = set(self.tracked_ids)
         for step in range(initial_steps, self.num_steps):
-
             traci.simulationStep()
+            current_ids = set(traci.vehicle.getIDList())
 
-            if not subscription_done and self.main_vehicle_obj.id in traci.vehicle.getIDList():
+            vanished = active_ids - current_ids
+            for veh_id in vanished:
+                active_ids.remove(veh_id)
+            if not active_ids:
+                break
+
+            # subscribe any newly appearing tracked car
+            for veh_id in active_ids - subscribed:
                 traci.vehicle.subscribeContext(
-                    self.main_vehicle_obj.id,
+                    veh_id,
                     traci.constants.CMD_GET_VEHICLE_VARIABLE,
                     self.proximity_radius,
                     [traci.constants.VAR_POSITION]
                 )
-                subscription_done = True
+                subscribed.add(veh_id)
 
-            if self.main_vehicle_obj.id in traci.vehicle.getIDList():
-
-                # Get main vehicle state
-                vehicle_cartesian_position = traci.vehicle.getPosition(self.main_vehicle_obj.id)
-                speed = traci.vehicle.getSpeed(self.main_vehicle_obj.id)
-                veh_acc = traci.vehicle.getAcceleration(self.main_vehicle_obj.id)
-                veh_heading = traci.vehicle.getAngle(self.main_vehicle_obj.id) #Returns the angle of the named vehicle within the last step [°]
-
-                # DSRC update
+            # update every vehicle still in simulation
+            for veh_id in list(active_ids):
+                veh_obj = self.vehicle_objs[veh_id]
+                pos = traci.vehicle.getPosition(veh_id)  # real position
+                # gather IMU data
+                speed = traci.vehicle.getSpeed(veh_id)
+                acc = traci.vehicle.getAcceleration(veh_id)
+                heading = traci.vehicle.getAngle(veh_id)
+                # gather DSRC data
                 if step % self.dsrc_refresh_rate == 0:
-                    current_neighbours = self.find_neighbours()
-                    nearby_rsus = self.find_nearby_rsu(vehicle_cartesian_position)
+                    neighbours = self.find_neighbours(veh_id)
+                    nearby_rsus = self.find_nearby_rsu(pos)
                 else:
-                    current_neighbours = nearby_rsus = None
-
-                # GPS update
-                measured_position = self.gps_error_model.apply_error(
-                    vehicle_cartesian_position) if (step % self.gps_refresh_rate == 0
-                                                    and step not in self.gps_outage) else None
-
-                # Build the data dictionary
+                    neighbours = nearby_rsus = None
+                # gather GPS data
+                measured_position = (self.gps_error_model.apply_error(pos) if
+                                     (step % self.gps_refresh_rate == 0 and step not in self.gps_outage) else None)
                 vehicle_data = {
                     'step': step,
                     'speed': speed,
-                    'acceleration': veh_acc,
-                    'heading': veh_heading,
-                    'real_position': vehicle_cartesian_position,
-                    'nearby_vehicles': current_neighbours,
+                    'acceleration': acc,
+                    'heading': heading,
+                    'real_position': pos,
+                    'nearby_vehicles': neighbours,
                     'nearby_rsus': nearby_rsus,
                     'measured_position': measured_position
                 }
-
-                self.main_vehicle_obj.update_data(**vehicle_data)
-
-            else:
-                # Main car is not in the simulation.
-                traci.close()
-                break
-
-        return self.main_vehicle_obj
+                veh_obj.update_data(**vehicle_data)
+        traci.close()
+        return list(self.vehicle_objs.values())
 
 
 class DSRCPositionEstimator:
@@ -307,7 +286,8 @@ class DSRCPositionEstimator:
 
 
 class VehicleEKF:
-    def __init__(self, dsrc_pos_estimator, first_measurement, use_dsrc):
+    def __init__(self, vehicle_id, dsrc_pos_estimator, first_measurement, use_dsrc):
+        self.vehicle_id = vehicle_id
         self.use_dsrc = use_dsrc
         self.dsrc_pos_estimator = dsrc_pos_estimator
         # State vector: [x, y, speed, heading, acceleration]
@@ -355,11 +335,14 @@ class VehicleEKF:
         # Step counter and history
         self.step_count = 0
         self.history = {
+            'step': [],
             'true_position': [],
-            'estimated_position': [],
-            'dsrc_position': [],
             'gps_position': [],
-            'step': []
+            'dsrc_position': [],
+            'estimated_position': [],
+            'gps_error': [],
+            'dsrc_error': [],
+            'ekf_error': []
         }
 
     def predict(self):
@@ -500,32 +483,44 @@ class VehicleEKF:
         )
 
         # Position measurement update
-        pos = step_record.measured_position
-        if pos:
-            self.history['gps_position'].append([pos.x, pos.y])
+        gps_pos = step_record.measured_position
+        gps_xy = None
+        dsrc_xy = None
+        if gps_pos:
+            gps_xy = [gps_pos.x, gps_pos.y]
             if self.use_dsrc:
-                improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record)
-                self.history['dsrc_position'].append([improved_pos.x, improved_pos.y])
-                self.update_position_measurement(improved_pos)
+                dsrc_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record)
+                dsrc_xy = [dsrc_pos.x, dsrc_pos.y]
+                self.update_position_measurement(dsrc_pos)
             else:
-                self.update_position_measurement(pos, use_dsrc=False)
+                self.update_position_measurement(gps_pos, use_dsrc=False)
         else:
-            self.history['gps_position'].append(None)
             if self.use_dsrc and (step_record.nearby_rsus or step_record.nearby_vehicles):
                 est_x, est_y = self.x[0, 0], self.x[1, 0]
                 prior_pos = Position(est_x, est_y, 1.5)
-                improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record, prior_pos)
-                if improved_pos:
-                    self.history['dsrc_position'].append([improved_pos.x, improved_pos.y])
-                    self.update_position_measurement(improved_pos)
-                else:
-                    self.history['dsrc_position'].append(None)
-            else:
-                self.history['dsrc_position']. append(None)
+                dsrc_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record, prior_pos)
+                if dsrc_pos:
+                    dsrc_xy = [dsrc_pos.x, dsrc_pos.y]
+                    self.update_position_measurement(dsrc_pos)
 
-        self.history['true_position'].append([step_record.real_position.x, step_record.real_position.y])
-        self.history['estimated_position'].append(self.x[:2, 0])
+        true_xy = [step_record.real_position.x, step_record.real_position.y]
+        ekf_xy = [float(self.x[0, 0]), float(self.x[1, 0])]
+
         self.history['step'].append(self.step_count)
+        self.history['true_position'].append(true_xy)
+        self.history['gps_position'].append(gps_xy)
+        self.history['dsrc_position'].append(dsrc_xy)
+        self.history['estimated_position'].append(ekf_xy)
+
+        if gps_xy:
+            self.history['gps_error'].append(cartesian_distance(true_xy, gps_xy))
+        else:
+            self.history['gps_error'].append(None)
+        if dsrc_xy:
+            self.history['dsrc_error'].append(cartesian_distance(true_xy, dsrc_xy))
+        else:
+            self.history['dsrc_error'].append(None)
+        self.history['ekf_error'].append(cartesian_distance(true_xy, ekf_xy))
 
 
 class PlottingManager:

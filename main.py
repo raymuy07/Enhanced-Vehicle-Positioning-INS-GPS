@@ -1,5 +1,6 @@
 from manager_classes import SimulationManager, VehicleEKF, PlottingManager, DSRCPositionEstimator
 from error_classes import GPSErrorModel, CommunicationDistanceErrorModel
+import pandas as pd
 
 if __name__ == "__main__":
 
@@ -87,6 +88,7 @@ if __name__ == "__main__":
 
     # Step 3: Set simulation parameters
     simulation_params = {
+        'num_vehicles_to_track': 10,
         'gps_refresh_rate': 10,  # the rate at which the GPS is updated
         'dsrc_refresh_rate': 2,
         'ins_refresh_rate': 1,
@@ -104,18 +106,35 @@ if __name__ == "__main__":
     comm_error_model = CommunicationDistanceErrorModel(simulation_params['communication_error_model_std'],
                                                        simulation_params['systematic_bias'])
 
-    simulation_manager = SimulationManager(simulation_params, simulation_type, gps_error_model, comm_error_model, gps_outage)
+    simulation_manager = SimulationManager(simulation_params, simulation_type,
+                                           gps_error_model, comm_error_model, gps_outage)
 
-    ##TODO change the specific_car_id method to be more dynamic
-    main_vehicle = simulation_manager.run_simulation(simulation_path)
-
-    ##TODO analyze results and print them
+    vehicle_objs = simulation_manager.run_simulation(simulation_path)
     dsrc_manager = DSRCPositionEstimator()
-    initial_step = main_vehicle.position_history[0]
-    ekf = VehicleEKF(dsrc_manager, initial_step, use_dsrc)
+    ekf_objs = []
 
-    for step_record in main_vehicle.position_history:
-        ekf.process_step(step_record)
+    for veh in vehicle_objs:
+        ekf = VehicleEKF(veh.id, dsrc_manager, veh.position_history[0], use_dsrc)
+        for step_record in veh.position_history:
+            ekf.process_step(step_record)
+        ekf_objs.append(ekf)
+
+    frames = []
+    for ekf in ekf_objs:
+        df = pd.DataFrame(ekf.history)
+        df["veh_id"] = ekf.vehicle_id
+        frames.append(df)
+
+    all_steps = pd.concat(frames, ignore_index=True)
+
+    mean_step = all_steps.groupby("step").mean(numeric_only=True)
+    std_step = all_steps.groupby("step").std(numeric_only=True)
+    summary = (all_steps
+               .agg({"gps_error": ["mean", "median", lambda s: s.quantile(.95), "max"],
+                     "ekf_error": ["mean", "median", lambda s: s.quantile(.95), "max"]})
+               .rename(index={"<lambda>": "q95"}))
+
+    print("\n### summary (meters) ###\n", summary.round(3))
 
     plotter = PlottingManager(ekf, net_path, use_dsrc, simulation_manager.gps_outage)
     plotter.plot_trajectory_comparison()
