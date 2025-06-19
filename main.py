@@ -88,7 +88,7 @@ if __name__ == "__main__":
 
     # Step 3: Set simulation parameters
     simulation_params = {
-        'num_vehicles_to_track': 10,
+        'num_vehicles_to_track': 50,
         'gps_refresh_rate': 10,  # the rate at which the GPS is updated
         'dsrc_refresh_rate': 2,
         'ins_refresh_rate': 1,
@@ -110,10 +110,10 @@ if __name__ == "__main__":
                                            gps_error_model, comm_error_model, gps_outage)
 
     vehicle_objs = simulation_manager.run_simulation(simulation_path)
-    dsrc_manager = DSRCPositionEstimator()
     ekf_objs = []
 
     for veh in vehicle_objs:
+        dsrc_manager = DSRCPositionEstimator()
         ekf = VehicleEKF(veh.id, dsrc_manager, veh.position_history[0], use_dsrc)
         for step_record in veh.position_history:
             ekf.process_step(step_record)
@@ -121,25 +121,40 @@ if __name__ == "__main__":
 
     frames = []
     for ekf in ekf_objs:
+        # make a Date frame of processed data for each tracked vehicle
         df = pd.DataFrame(ekf.history)
         df["veh_id"] = ekf.vehicle_id
         frames.append(df)
 
     all_steps = pd.concat(frames, ignore_index=True)
 
-    mean_step = all_steps.groupby("step").mean(numeric_only=True)
-    std_step = all_steps.groupby("step").std(numeric_only=True)
-    summary = (all_steps
-               .agg({"gps_error": ["mean", "median", lambda s: s.quantile(.95), "max"],
-                     "ekf_error": ["mean", "median", lambda s: s.quantile(.95), "max"]})
-               .rename(index={"<lambda>": "q95"}))
+    error_cols = ["gps_error", "ekf_error", "dsrc_error"]
+    existing_cols = [c for c in error_cols if c in all_steps]
 
-    print("\n### summary (meters) ###\n", summary.round(3))
+    agg = (all_steps.groupby("step")[existing_cols].agg(['mean', 'std', 'count']))
 
-    plotter = PlottingManager(ekf, net_path, use_dsrc, simulation_manager.gps_outage)
-    plotter.plot_trajectory_comparison()
-    plotter.plot_error_comparison()
-    plotter.plot_cumulative_distribution()
+    mean_step = agg.xs('mean', level=1, axis=1)
+    std_step = agg.xs('std', level=1, axis=1)
+    count_step = agg.xs('count', level=1, axis=1)
+
+    mask_gps_valid = all_steps["gps_error"].notna()
+    summary = (
+        all_steps.loc[mask_gps_valid, ["gps_error", "ekf_error"]]
+        .agg(["mean", "median", lambda s: s.quantile(.95), "max"])
+        .rename(index={"<lambda>": "q95"})
+    )
+
+    print("\n### summary (meters) ###\n", summary)
+
+    plotter = PlottingManager(mean_step, std_step, count_step,
+                              all_steps,
+                              net_file=net_path,
+                              dsrc_flag=use_dsrc,
+                              gps_outage=simulation_manager.gps_outage)
+    for i in range(3):
+        plotter.plot_trajectory_comparison(vehicle_objs[i].id, ekf_objs[i])
+    plotter.plot_mean_error_with_band()
+    plotter.plot_error_cdf()
     print("Analysis complete")
 
     # Note: data_sequence should be a list of vehicle_data dictionaries as shown in your format
