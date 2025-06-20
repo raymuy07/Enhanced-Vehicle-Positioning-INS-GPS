@@ -13,7 +13,7 @@ import pandas as pd
 class SimulationManager:
     """Manages the overall simulation."""
 
-    def __init__(self, simulation_params, simulation_type, gps_error_model, comm_error_model, gps_outage):
+    def __init__(self, simulation_params, simulation_type, gps_error_model, neighbors_error_model, comm_error_model, gps_outage):
 
         self.rsu_manager = None
         self.vehicle_objs = None
@@ -21,6 +21,7 @@ class SimulationManager:
 
         self.simulation_type = simulation_type
         self.gps_error_model = gps_error_model
+        self.neighbors_error_model = neighbors_error_model
         self.comm_error_model = comm_error_model
 
         self.num_vehicles_to_track = simulation_params.get('num_vehicles_to_track', 1)
@@ -76,7 +77,7 @@ class SimulationManager:
 
             if real_world_distance <= self.proximity_radius:
                 map_position = Position(x, y)
-                position_w_error = self.gps_error_model.apply_error((x, y))
+                position_w_error = self.neighbors_error_model.apply_error((x, y))
 
                 snapshot = {
                     'id': veh_id,

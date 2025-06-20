@@ -103,11 +103,12 @@ if __name__ == "__main__":
 
     # initialize the GPS error model
     gps_error_model = GPSErrorModel(simulation_params['gps_error_model_std'])
+    neighbors_error_model = GPSErrorModel(simulation_params['gps_error_model_std'] / 4)
     comm_error_model = CommunicationDistanceErrorModel(simulation_params['communication_error_model_std'],
                                                        simulation_params['systematic_bias'])
 
     simulation_manager = SimulationManager(simulation_params, simulation_type,
-                                           gps_error_model, comm_error_model, gps_outage)
+                                           gps_error_model, neighbors_error_model, comm_error_model, gps_outage)
 
     vehicle_objs = simulation_manager.run_simulation(simulation_path)
     ekf_objs = []
