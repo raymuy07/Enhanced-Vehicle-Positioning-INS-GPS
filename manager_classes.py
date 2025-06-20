@@ -635,7 +635,7 @@ class PlottingManager:
                 mask = valid_common
                 plt.plot(x[mask], y[mask], color=color, lw=1.5, label=label)
                 plt.fill_between(x[mask], y_low[mask], y_high[mask],
-                                 color=color, alpha=0.12)
+                                 color=color, alpha=0.07)
                 return
 
             o_start, o_end = self.gps_outage[0], self.gps_outage[-1]
@@ -653,7 +653,7 @@ class PlottingManager:
         _plot("ekf_error", "tab:red", "EKF mean ±1σ")
         _plot("gps_error", "tab:blue", "GPS mean ±1σ", split_outage=True)
         if self.dsrc_flag and "dsrc_error" in self.mean_step:
-            _plot("dsrc_error", "orange", "DSRC mean ±1σ", min_samples=3)
+            _plot("dsrc_error", "tab:orange", "DSRC mean ±1σ", min_samples=3)
         if self.gps_outage:
             o_start, o_end = self.gps_outage[0], self.gps_outage[-1]
             plt.axvspan(o_start, o_end,
@@ -724,23 +724,35 @@ class PlottingManager:
                 ["mean", "median", lambda s: s.quantile(0.95), "max"]).rename(
                 index={"<lambda>": "q95"}).round(2)
         )
+        improvement = []
+        for metric in summary.index:
+            gps_val = summary.loc[metric, "gps_error"]
+            ekf_val = summary.loc[metric, "ekf_error"]
+            if pd.notna(gps_val) and gps_val != 0:
+                diff = 100 * (gps_val - ekf_val) / gps_val
+                text = f"↓ {diff:.1f}%" if diff >= 0 else f"↑ {abs(diff):.1f}%"
+            else:
+                text = "N/A"
+            improvement.append(text)
+        summary["EKF vs GPS"] = improvement
+
+        #summary = summary.T
+
 
         # Build table figure
         fig, ax = plt.subplots(figsize=(8, 2))
         ax.axis('off')
-        ax.set_title("Error Summary (meters)", fontsize=16, pad=10)
-
-        table = plt.table(
+        tbl = ax.table(
             cellText=summary.values,
             rowLabels=summary.index,
             colLabels=summary.columns,
-            cellLoc='center',
-            loc='center'
+            cellLoc="center",
+            loc="center"
         )
-        table.auto_set_font_size(False)
-        table.set_fontsize(14)
-        table.scale(1.2, 1.5)
+        tbl.auto_set_font_size(False)
+        tbl.set_fontsize(12)
+        tbl.scale(1.3, 1.5)
+        ax.set_title("Error Summary (meters)", fontsize=16, pad=10)
 
         plt.tight_layout()
         plt.show()
-
