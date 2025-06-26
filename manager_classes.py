@@ -4,22 +4,27 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from core_classes import Position, Vehicle, RSUManager
+from utility_functions import cartesian_distance
 import traci.constants
 import sumolib
+import pandas as pd
 
 
 class SimulationManager:
     """Manages the overall simulation."""
 
-    def __init__(self, simulation_params, simulation_type, gps_error_model, comm_error_model, gps_outage):
+    def __init__(self, simulation_params, simulation_type, gps_error_model, neighbors_error_model, comm_error_model, gps_outage):
 
         self.rsu_manager = None
-        self.main_vehicle_obj = None
+        self.vehicle_objs = None
+        self.tracked_ids = None
 
         self.simulation_type = simulation_type
         self.gps_error_model = gps_error_model
+        self.neighbors_error_model = neighbors_error_model
         self.comm_error_model = comm_error_model
 
+        self.num_vehicles_to_track = simulation_params.get('num_vehicles_to_track', 1)
         self.gps_refresh_rate = simulation_params.get('gps_refresh_rate', 10)
         self.dsrc_refresh_rate = simulation_params.get('dsrc_refresh_rate', 2)
         self.ins_refresh_rate = simulation_params.get('ins_refresh_rate', 1)
@@ -31,30 +36,14 @@ class SimulationManager:
         if gps_outage:
             self.gps_outage = range(self.num_steps//2 - 300, self.num_steps//2)
 
-    ##TODO: Check if this function really necessary
     @staticmethod
-    def get_random_main_vehicle(initial_steps):
-        """This function is for making our simulation more relaistic
-        instead it will focus on the same vehicle all the time, we want
-        to select a random vehicle each simulation.
-
-        arg: initial_steps: it's the amount of steps the simulation will run before
-        choosing the main vehicle.
-        """
-        vehicle_ids = None
-        random_vehicle = None
-
-        for step in range(initial_steps):
+    def get_random_main_vehicles(initial_steps, n):
+        for _ in range(initial_steps):
             traci.simulationStep()
-            vehicle_ids = traci.vehicle.getIDList()
-
-        if vehicle_ids:
-            random_vehicle = random.choice(vehicle_ids)
-
-        if random_vehicle:
-            return random_vehicle
-        else:
-            print("Error:couldn't choose random vehicle.")
+        ids = traci.vehicle.getIDList()
+        if not ids:
+            raise RuntimeError("No vehicles in the scenario")
+        return random.sample(ids, min(n, len(ids)))
 
     def create_snapshot(self, neighbor_id, real_world_distance):
         """Create a snapshot of the vehicle's current state."""
@@ -70,29 +59,25 @@ class SimulationManager:
             'real_world_distance': real_world_distance
         }
 
-    def find_neighbours(self):
-
-        specific_car_id = self.main_vehicle_obj.id
-        nearby_vehicles = []
-
-        context = traci.vehicle.getContextSubscriptionResults(specific_car_id)
-
+    def find_neighbours(self, veh_id):
+        context = traci.vehicle.getContextSubscriptionResults(veh_id)
         if context is None:
-            return nearby_vehicles
+            return []
 
-        for veh_id, var_dict in context.items():
+        neighbors = []
+        for nb_id, var_dict in context.items():
             if traci.vehicle.getTypeID(veh_id) != "DEFAULT_VEHTYPE":
                 continue
             pos = var_dict.get(traci.constants.VAR_POSITION)
             if pos is None:
                 continue
             x, y = pos
-            distance = np.linalg.norm(np.array(pos) - np.array(traci.vehicle.getPosition(specific_car_id)))
+            distance = np.linalg.norm(np.array(pos) - np.array(traci.vehicle.getPosition(veh_id)))
             real_world_distance = self.comm_error_model.apply_error(distance)
 
             if real_world_distance <= self.proximity_radius:
                 map_position = Position(x, y)
-                position_w_error = self.gps_error_model.apply_error((x, y))
+                position_w_error = self.neighbors_error_model.apply_error((x, y))
 
                 snapshot = {
                     'id': veh_id,
@@ -101,9 +86,9 @@ class SimulationManager:
                     'real_world_distance': real_world_distance
                 }
 
-                nearby_vehicles.append(snapshot)
+                neighbors.append(snapshot)
 
-        return nearby_vehicles
+        return neighbors
 
     def find_nearby_rsu(self, vehicle_cartesian_position):
         """
@@ -131,7 +116,6 @@ class SimulationManager:
 
         initial_steps = 10
 
-
         # Start SUMO
         traci.start(["sumo", "-c", simulation_path])
 
@@ -139,64 +123,61 @@ class SimulationManager:
         self.rsu_manager = RSUManager(self.simulation_type, self.rsu_flag, self.proximity_radius)
 
         # initialize the random vehicle
-        random_vehicle = self.get_random_main_vehicle(initial_steps)
-        self.main_vehicle_obj = Vehicle(random_vehicle)
+        self.tracked_ids = self.get_random_main_vehicles(initial_steps, self.num_vehicles_to_track)
+        self.vehicle_objs = {vid: Vehicle(vid) for vid in self.tracked_ids}
+        subscribed = set()
 
-        subscription_done = False
-
+        active_ids = set(self.tracked_ids)
         for step in range(initial_steps, self.num_steps):
-
             traci.simulationStep()
+            current_ids = set(traci.vehicle.getIDList())
 
-            if not subscription_done and self.main_vehicle_obj.id in traci.vehicle.getIDList():
+            vanished = active_ids - current_ids
+            for veh_id in vanished:
+                active_ids.remove(veh_id)
+            if not active_ids:
+                break
+
+            # subscribe any newly appearing tracked car
+            for veh_id in active_ids - subscribed:
                 traci.vehicle.subscribeContext(
-                    self.main_vehicle_obj.id,
+                    veh_id,
                     traci.constants.CMD_GET_VEHICLE_VARIABLE,
                     self.proximity_radius,
                     [traci.constants.VAR_POSITION]
                 )
-                subscription_done = True
+                subscribed.add(veh_id)
 
-            if self.main_vehicle_obj.id in traci.vehicle.getIDList():
-
-                # Get main vehicle state
-                vehicle_cartesian_position = traci.vehicle.getPosition(self.main_vehicle_obj.id)
-                speed = traci.vehicle.getSpeed(self.main_vehicle_obj.id)
-                veh_acc = traci.vehicle.getAcceleration(self.main_vehicle_obj.id)
-                veh_heading = traci.vehicle.getAngle(self.main_vehicle_obj.id) #Returns the angle of the named vehicle within the last step [°]
-
-                # DSRC update
+            # update every vehicle still in simulation
+            for veh_id in list(active_ids):
+                veh_obj = self.vehicle_objs[veh_id]
+                pos = traci.vehicle.getPosition(veh_id)  # real position
+                # gather IMU data
+                speed = traci.vehicle.getSpeed(veh_id)
+                acc = traci.vehicle.getAcceleration(veh_id)
+                heading = traci.vehicle.getAngle(veh_id)
+                # gather DSRC data
                 if step % self.dsrc_refresh_rate == 0:
-                    current_neighbours = self.find_neighbours()
-                    nearby_rsus = self.find_nearby_rsu(vehicle_cartesian_position)
+                    neighbours = self.find_neighbours(veh_id)
+                    nearby_rsus = self.find_nearby_rsu(pos)
                 else:
-                    current_neighbours = nearby_rsus = None
-
-                # GPS update
-                measured_position = self.gps_error_model.apply_error(
-                    vehicle_cartesian_position) if (step % self.gps_refresh_rate == 0
-                                                    and step not in self.gps_outage) else None
-
-                # Build the data dictionary
+                    neighbours = nearby_rsus = None
+                # gather GPS data
+                measured_position = (self.gps_error_model.apply_error(pos) if
+                                     (step % self.gps_refresh_rate == 0 and step not in self.gps_outage) else None)
                 vehicle_data = {
                     'step': step,
                     'speed': speed,
-                    'acceleration': veh_acc,
-                    'heading': veh_heading,
-                    'real_position': vehicle_cartesian_position,
-                    'nearby_vehicles': current_neighbours,
+                    'acceleration': acc,
+                    'heading': heading,
+                    'real_position': pos,
+                    'nearby_vehicles': neighbours,
                     'nearby_rsus': nearby_rsus,
                     'measured_position': measured_position
                 }
-
-                self.main_vehicle_obj.update_data(**vehicle_data)
-
-            else:
-                # Main car is not in the simulation.
-                traci.close()
-                break
-
-        return self.main_vehicle_obj
+                veh_obj.update_data(**vehicle_data)
+        traci.close()
+        return list(self.vehicle_objs.values())
 
 
 class DSRCPositionEstimator:
@@ -242,7 +223,7 @@ class DSRCPositionEstimator:
         result = minimize(objective, initial_guess_arr, bounds=bounds)
 
         if not result.success:
-            print(f"[WARNING] Trilateration failed: {result.message}")
+            # print(f"[WARNING] Trilateration failed: {result.message}")
             return initial_guess
 
         return Position(result.x[0], result.x[1])
@@ -307,7 +288,8 @@ class DSRCPositionEstimator:
 
 
 class VehicleEKF:
-    def __init__(self, dsrc_pos_estimator, first_measurement, use_dsrc):
+    def __init__(self, vehicle_id, dsrc_pos_estimator, first_measurement, use_dsrc):
+        self.vehicle_id = vehicle_id
         self.use_dsrc = use_dsrc
         self.dsrc_pos_estimator = dsrc_pos_estimator
         # State vector: [x, y, speed, heading, acceleration]
@@ -355,11 +337,14 @@ class VehicleEKF:
         # Step counter and history
         self.step_count = 0
         self.history = {
+            'step': [],
             'true_position': [],
-            'estimated_position': [],
-            'dsrc_position': [],
             'gps_position': [],
-            'step': []
+            'dsrc_position': [],
+            'estimated_position': [],
+            'gps_error': [],
+            'dsrc_error': [],
+            'ekf_error': []
         }
 
     def predict(self):
@@ -472,8 +457,8 @@ class VehicleEKF:
         S = H @ self.P @ H.T + R
         mahalanobis = y.T @ np.linalg.inv(S) @ y
         if mahalanobis > 16.0:
-            print(
-                f"WARNING: Position measurement outlier rejected at step {self.step_count}. Distance: {mahalanobis[0, 0]:.2f}")
+            # print(
+            #    f"WARNING: Position measurement outlier rejected at step {self.step_count}. Distance: {mahalanobis[0, 0]:.2f}")
             return
         alpha = 0.7
         K = alpha * self.P @ H.T @ np.linalg.inv(S)
@@ -500,61 +485,75 @@ class VehicleEKF:
         )
 
         # Position measurement update
-        pos = step_record.measured_position
-        if pos:
-            self.history['gps_position'].append([pos.x, pos.y])
+        gps_pos = step_record.measured_position
+        gps_xy = None
+        dsrc_xy = None
+        if gps_pos:
+            gps_xy = [gps_pos.x, gps_pos.y]
             if self.use_dsrc:
-                improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record)
-                self.history['dsrc_position'].append([improved_pos.x, improved_pos.y])
-                self.update_position_measurement(improved_pos)
+                dsrc_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record)
+                dsrc_xy = [dsrc_pos.x, dsrc_pos.y]
+                self.update_position_measurement(dsrc_pos)
             else:
-                self.update_position_measurement(pos, use_dsrc=False)
+                self.update_position_measurement(gps_pos, use_dsrc=False)
         else:
-            self.history['gps_position'].append(None)
             if self.use_dsrc and (step_record.nearby_rsus or step_record.nearby_vehicles):
                 est_x, est_y = self.x[0, 0], self.x[1, 0]
                 prior_pos = Position(est_x, est_y, 1.5)
-                improved_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record, prior_pos)
-                if improved_pos:
-                    self.history['dsrc_position'].append([improved_pos.x, improved_pos.y])
-                    self.update_position_measurement(improved_pos)
-                else:
-                    self.history['dsrc_position'].append(None)
-            else:
-                self.history['dsrc_position']. append(None)
+                dsrc_pos = self.dsrc_pos_estimator.get_dsrc_position(step_record, prior_pos)
+                if dsrc_pos:
+                    dsrc_xy = [dsrc_pos.x, dsrc_pos.y]
+                    self.update_position_measurement(dsrc_pos)
 
-        self.history['true_position'].append([step_record.real_position.x, step_record.real_position.y])
-        self.history['estimated_position'].append(self.x[:2, 0])
+        true_xy = [step_record.real_position.x, step_record.real_position.y]
+        ekf_xy = self.x[:2, 0]
+
         self.history['step'].append(self.step_count)
+        self.history['true_position'].append(true_xy)
+        self.history['gps_position'].append(gps_xy)
+        self.history['dsrc_position'].append(dsrc_xy)
+        self.history['estimated_position'].append(ekf_xy)
+
+        if gps_xy:
+            self.history['gps_error'].append(cartesian_distance(true_xy, gps_xy))
+        else:
+            self.history['gps_error'].append(None)
+        if dsrc_xy:
+            self.history['dsrc_error'].append(cartesian_distance(true_xy, dsrc_xy))
+        else:
+            self.history['dsrc_error'].append(None)
+        self.history['ekf_error'].append(cartesian_distance(true_xy, ekf_xy))
 
 
 class PlottingManager:
-    def __init__(self, ekf=None, net_file=None, dsrc_flag=False, gps_outage=None):
+    def __init__(self,
+                 mean_step, std_step, count_step, all_steps,
+                 net_file=None,
+                 dsrc_flag=False,
+                 gps_outage=None):
+
+        self.mean_step = mean_step
+        self.std_step = std_step
+        self.count_step = count_step
+        self.all_steps = all_steps
         self.dsrc_flag = dsrc_flag
         self.gps_outage = gps_outage or []
         self.net_file = net_file
-        if ekf is not None:
-            self.true_pos = np.array(ekf.history['true_position'])
-            self.est_pos = np.array(ekf.history['estimated_position'])
-            self.dsrc_pos = np.array([p if p is not None else [np.nan, np.nan] for p in ekf.history['dsrc_position']])
-            self.gps_pos = np.array([p if p is not None else [np.nan, np.nan] for p in ekf.history['gps_position']])
+
+        self.steps = mean_step.index.to_numpy()
+        self.mean_ekf = mean_step['ekf_error'].to_numpy()
+        self.std_ekf = std_step['ekf_error'].to_numpy()
+
+        self.mean_gps = mean_step["gps_error"].to_numpy()
+        self.std_gps = std_step["gps_error"].to_numpy()
+
+        if dsrc_flag and "dsrc_error" in mean_step:
+            self.mean_dsrc = mean_step["dsrc_error"].to_numpy()
+            self.std_dsrc = std_step["dsrc_error"].to_numpy()
         else:
-            self.true_pos = self.est_pos = self.gps_pos = None
+            self.mean_dsrc = self.std_dsrc = None
 
-        self.history = ekf.history
-        self.ekf_error = np.linalg.norm(self.true_pos - self.est_pos, axis=1)
-        # For GPS error, we need to handle the potential NaN values
-        self.gps_error = np.full_like(self.ekf_error, np.nan)
-        for i in range(len(self.true_pos)):
-            if not np.isnan(self.gps_pos[i, 0]) and not np.isnan(self.gps_pos[i, 1]):
-                self.gps_error[i] = np.linalg.norm(self.true_pos[i] - self.gps_pos[i])
-        self.dsrc_error = np.full_like(self.ekf_error, np.nan)
-        if self.dsrc_flag:
-            for i in range(len(self.true_pos)):
-                if not np.isnan(self.dsrc_pos[i, 0]) and not np.isnan(self.dsrc_pos[i, 1]):
-                    self.dsrc_error[i] = np.linalg.norm(self.true_pos[i] - self.dsrc_pos[i])
-
-    def draw_network_background(self):
+    def _draw_network_background(self):
         if not self.net_file:
             return
         net = sumolib.net.readNet(self.net_file)
@@ -564,120 +563,197 @@ class PlottingManager:
                 xs, ys = zip(*shape)
                 plt.plot(xs, ys, color='lightgray', linewidth=0.5, zorder=0)
 
-    def plot_trajectory_comparison(self):
-        if self.true_pos is None:
-            print("Error: No EKF history data provided.")
-            return
-
+    def _plot_trajectory_arrays(self, true_pos, est_pos, gps_pos, title='Trajectory Comparison'):
         plt.figure(figsize=(10, 8))
-        self.draw_network_background()
-        plt.plot(self.true_pos[:, 0], self.true_pos[:, 1], 'b-', label='True Position', zorder=3)
-        plt.plot(self.est_pos[:, 0], self.est_pos[:, 1], 'r--', label='EKF Estimate', zorder=3)
-        valid = ~np.isnan(self.gps_pos[:, 0])
-        plt.scatter(self.gps_pos[valid, 0], self.gps_pos[valid, 1], marker='x', label='GPS', zorder=4, s=30)
+        self._draw_network_background()
+
+        plt.plot(true_pos[:, 0], true_pos[:, 1],
+                 'b-', label='True Position', zorder=3)
+        plt.plot(est_pos[:, 0], est_pos[:, 1],
+                 'r--', label='EKF Estimate', zorder=3)
+
+        valid = ~np.isnan(gps_pos[:, 0])
+        plt.scatter(gps_pos[valid, 0], gps_pos[valid, 1],
+                    marker='x', label='GPS', zorder=4, s=30)
+
         plt.legend(fontsize=16)
         plt.grid(True)
         plt.xlabel('X position (m)', fontsize=18)
         plt.ylabel('Y position (m)', fontsize=18)
-        plt.title('Vehicle Trajectory Comparison', fontsize=20)
+        plt.title(title, fontsize=20)
         plt.xticks(fontsize=14)
         plt.yticks(fontsize=14)
         plt.axis('equal')
 
-        # Calculate percentiles to handle outliers
-        all_x = np.concatenate([self.true_pos[:, 0], self.est_pos[:, 0], self.gps_pos[valid, 0]])
-        all_y = np.concatenate([self.true_pos[:, 1], self.est_pos[:, 1], self.gps_pos[valid, 1]])
+        # smart axes limits
+        all_x = np.concatenate([true_pos[:, 0], est_pos[:, 0], gps_pos[valid, 0]])
+        all_y = np.concatenate([true_pos[:, 1], est_pos[:, 1], gps_pos[valid, 1]])
 
-        # Use 1st and 99th percentiles to exclude extreme outliers
-        x_min = np.percentile(all_x, 1)
-        x_max = np.percentile(all_x, 99)
-        y_min = np.percentile(all_y, 1)
-        y_max = np.percentile(all_y, 99)
+        x_min, x_max = np.percentile(all_x, [1, 99])
+        y_min, y_max = np.percentile(all_y, [1, 99])
 
-        # Add some margin (5% of range)
         x_margin = (x_max - x_min) * 0.05
         y_margin = (y_max - y_min) * 0.05
 
         plt.xlim(x_min - x_margin, x_max + x_margin)
         plt.ylim(y_min - y_margin, y_max + y_margin)
-
         plt.show()
 
-    def plot_error_comparison(self):
-        plt.figure(figsize=(10, 6))
+    def plot_trajectory_comparison(self, veh_id, ekf_obj):
+        if ekf_obj.vehicle_id != veh_id:
+            print(f"[plot] Warning: ekf_obj.vehicle_id = {ekf_obj.vehicle_id} "
+                  f"doesn’t match veh_id = {veh_id}. Using ekf_obj data.")
 
-        # Plot both errors
-        plt.plot(self.history['step'], self.ekf_error, 'r-', label='EKF Error')
-        steps = np.array(self.history['step'])
-        valid = ~np.isnan(self.gps_error)
-        plt.plot(steps[valid], np.array(self.gps_error)[valid], linestyle='-', color='gray', linewidth=0.5, alpha=0.3,
-                 label='GPS Error')
-        valid_dsrc = ~np.isnan(self.dsrc_error)
-        plt.plot(steps[valid_dsrc], np.array(self.dsrc_error)[valid_dsrc], linestyle='-', color='orange', linewidth=0.5,
-                 alpha=0.3, label='DSRC Error')
+            # build arrays from EKF history
+        true_pos = np.array(ekf_obj.history['true_position'])
+        est_pos = np.array(ekf_obj.history['estimated_position'])
+        gps_pos = np.array([
+            p if p is not None else [np.nan, np.nan]
+            for p in ekf_obj.history['gps_position']
+        ])
 
-        # Calculate and display average errors & add horizontal lines for average errors
-        avg_ekf_error = np.nanmean(self.ekf_error)
-        plt.axhline(y=avg_ekf_error, color='r', linestyle=':', label=f'Avg EKF Error: {avg_ekf_error:.2f}m')
-        avg_gps_error = np.nanmean(self.gps_error)
-        plt.axhline(y=avg_gps_error, color='b', linestyle=':', label=f'Avg GPS Error: {avg_gps_error:.2f}m')
-        if self.dsrc_flag:
-            avg_dsrc_error = np.nanmean(self.dsrc_error)
-            plt.axhline(y=avg_dsrc_error, color='darkorange', linestyle=':', label=f'Avg DSRC Error: {avg_dsrc_error:.2f}m')
+        self._plot_trajectory_arrays(true_pos, est_pos, gps_pos,
+                                     title=f'Vehicle {veh_id} Trajectory')
 
-        plt.xlabel('Simulation Step', fontsize=18)
-        plt.ylabel('Position Error (m)', fontsize=18)
-        plt.title('Position Error Comparison: EKF vs GPS', fontsize=20)
-        plt.legend(fontsize=14)
-        plt.xticks(fontsize=14)
-        plt.yticks(fontsize=14)
-        plt.grid(True)
+    def plot_mean_error_with_band(self):
+        def _plot(col, color, label, min_samples=1, split_outage=False):
+            """Draw mean ± σ band for `col`."""
+            if col not in self.mean_step.columns:
+                return
 
-        # Add text with improvement percentage
-        improvement = (1 - avg_ekf_error / avg_gps_error) * 100
-        plt.text(0.5, 0.01, f'EKF improves accuracy by {improvement:.1f}%',
-                 horizontalalignment='center', verticalalignment='bottom',
-                 transform=plt.gca().transAxes, fontsize=14, bbox=dict(facecolor='white', alpha=0.5))
+            mean = self.mean_step[col]
+            std = self.std_step[col]
+            n = self.count_step[col]
+
+            x = mean.index.to_numpy()
+            y = mean.to_numpy()
+            y_low = y - std.to_numpy()
+            y_high = y + std.to_numpy()
+
+            valid_common = (n >= min_samples) & ~np.isnan(y)
+
+            if not (split_outage and self.gps_outage):
+                mask = valid_common
+                plt.plot(x[mask], y[mask], color=color, lw=1.5, label=label)
+                plt.fill_between(x[mask], y_low[mask], y_high[mask],
+                                 color=color, alpha=0.07)
+                return
+
+            o_start, o_end = self.gps_outage[0], self.gps_outage[-1]
+            mask_before = valid_common & (x <= o_start)
+            mask_after = valid_common & (x >= o_end)
+
+            for m in [mask_before, mask_after]:
+                if m.any():
+                    plt.plot(x[m], y[m], color=color, lw=1.5, label=label)
+                    plt.fill_between(x[m], y_low[m], y_high[m],
+                                     color=color, alpha=0.12)
+                    label = "_nolegend_"
+
+        plt.figure(figsize=(10, 5))
+        _plot("ekf_error", "tab:red", "EKF mean ±1σ")
+        _plot("gps_error", "tab:blue", "GPS mean ±1σ", split_outage=True)
+        if self.dsrc_flag and "dsrc_error" in self.mean_step:
+            _plot("dsrc_error", "tab:orange", "DSRC mean ±1σ", min_samples=3)
         if self.gps_outage:
-            outage_start = self.gps_outage[0]
-            outage_end = self.gps_outage[-1]
-            plt.axvspan(outage_start, outage_end, color='lightblue', alpha=0.2, zorder=0)
-            mid_x = (outage_start + outage_end) / 2
-            max_y = np.nanmax([*self.ekf_error, *self.gps_error, *self.dsrc_error])
-            plt.text(mid_x, max_y * 0.95, "GPS Outage", color='gray',
-                     fontsize=12, ha='center', va='bottom', alpha=0.7)
+            o_start, o_end = self.gps_outage[0], self.gps_outage[-1]
+            plt.axvspan(o_start, o_end,
+                        color='lightblue', alpha=0.25, zorder=0)
+            ax = plt.gca()
+            x_mid = (o_start + o_end) / 2  # middle of the span
+            y_top = ax.get_ylim()[1]  # current top of y-axis
+            ax.text(x_mid, y_top * 0.95,  # 95 % up the y-axis
+                    "GPS outage",
+                    ha='center', va='top',
+                    fontsize=12, color='gray', alpha=0.8)
 
+        plt.xlabel("Simulation Step", fontsize=14)
+        plt.ylabel("Position Error (m)", fontsize=14)
+        plt.title("Mean ± 1σ Position Error", fontsize=16)
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
         plt.show()
 
-    def plot_cumulative_distribution(self):
+    def plot_error_cdf(self):
         plt.figure(figsize=(10, 6))
 
-        # Sort errors for CDF
-        sorted_ekf_error = np.sort(self.ekf_error[~np.isnan(self.ekf_error)])
-        sorted_gps_error = np.sort(self.gps_error[~np.isnan(self.gps_error)])
+        def add_method(values, color, label_base):
+            values = pd.Series(values).dropna()
+            if values.empty:
+                return
 
-        # Calculate cumulative probabilities
-        p_ekf = np.arange(1, len(sorted_ekf_error) + 1) / len(sorted_ekf_error)
-        p_gps = np.arange(1, len(sorted_gps_error) + 1) / len(sorted_gps_error)
+            sorted_vals = np.sort(values)
+            probs = np.linspace(1 / len(sorted_vals), 1, len(sorted_vals))
+            mean_val = sorted_vals.mean()
+            q95_val = np.percentile(sorted_vals, 95)
 
-        # Plot CDF
-        plt.plot(sorted_ekf_error, p_ekf, 'r-', label='EKF Error CDF')
-        plt.plot(sorted_gps_error, p_gps, 'b--', label='GPS Error CDF')
+            plt.plot(sorted_vals, probs,
+                     label=f"{label_base} (μ={mean_val:.2f} m, q95={q95_val:.2f} m)",
+                     color=color)
+            plt.axvline(mean_val, color=color, ls=':', lw=1)
+            plt.axvline(q95_val, color=color, ls='--', lw=1)
 
-        plt.xlabel('Position Error (m)', fontsize=18)
-        plt.ylabel('Cumulative Probability', fontsize=18)
-        plt.title('Error Distribution: EKF vs GPS', fontsize=20)
-        plt.legend(fontsize=16)
-        plt.xticks(fontsize=14)
-        plt.yticks(fontsize=14)
-        plt.grid(True)
+        # GPS
+        add_method(self.all_steps["gps_error"], "tab:blue", "GPS")
+        # DSRC (if enabled)
+        if self.dsrc_flag and "dsrc_error" in self.all_steps.columns:
+            add_method(self.all_steps["dsrc_error"], "tab:orange", "DSRC")
+        # EKF
+        add_method(self.all_steps["ekf_error"], "tab:red", "EKF")
 
-        # Calculate and display percentile values
-        ekf_95 = np.percentile(sorted_ekf_error, 95)
-        gps_95 = np.percentile(sorted_gps_error, 95)
+        plt.xlabel("Absolute position error (m)")
+        plt.ylabel("Cumulative probability")
+        plt.title("Error CDF  (μ = mean, q95 = 95th percentile)")
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
 
-        plt.axvline(x=ekf_95, color='r', linestyle=':', label=f'EKF 95th %: {ekf_95:.2f}m')
-        plt.axvline(x=gps_95, color='b', linestyle=':', label=f'GPS 95th %: {gps_95:.2f}m')
-        plt.legend(fontsize=16)
+    def plot_summary_table(self):
+        """
+        Display a summary statistics table for GPS, EKF, and DSRC errors.
+        """
+        error_cols = ["gps_error"]
+        if self.dsrc_flag and "dsrc_error" in self.all_steps.columns:
+            error_cols.append("dsrc_error")
+        error_cols.append("ekf_error")
 
+        mask_gps_valid = self.all_steps["gps_error"].notna()
+        summary = (
+            self.all_steps.loc[mask_gps_valid, error_cols].agg(
+                ["mean", "median", lambda s: s.quantile(0.95), "max"]).rename(
+                index={"<lambda>": "q95"}).round(2)
+        )
+        improvement = []
+        for metric in summary.index:
+            gps_val = summary.loc[metric, "gps_error"]
+            ekf_val = summary.loc[metric, "ekf_error"]
+            if pd.notna(gps_val) and gps_val != 0:
+                diff = 100 * (gps_val - ekf_val) / gps_val
+                text = f"↓ {diff:.1f}%" if diff >= 0 else f"↑ {abs(diff):.1f}%"
+            else:
+                text = "N/A"
+            improvement.append(text)
+        summary["EKF vs GPS"] = improvement
+
+        #summary = summary.T
+
+
+        # Build table figure
+        fig, ax = plt.subplots(figsize=(8, 2))
+        ax.axis('off')
+        tbl = ax.table(
+            cellText=summary.values,
+            rowLabels=summary.index,
+            colLabels=summary.columns,
+            cellLoc="center",
+            loc="center"
+        )
+        tbl.auto_set_font_size(False)
+        tbl.set_fontsize(12)
+        tbl.scale(1.3, 1.5)
+        ax.set_title("Error Summary (meters)", fontsize=16, pad=10)
+
+        plt.tight_layout()
         plt.show()

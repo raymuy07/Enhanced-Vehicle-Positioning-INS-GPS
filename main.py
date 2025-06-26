@@ -1,5 +1,6 @@
 from manager_classes import SimulationManager, VehicleEKF, PlottingManager, DSRCPositionEstimator
 from error_classes import GPSErrorModel, CommunicationDistanceErrorModel
+import pandas as pd
 
 if __name__ == "__main__":
 
@@ -12,13 +13,13 @@ if __name__ == "__main__":
     sim = int(input("Enter your choice (1-3): "))
 
     if sim == 1:
-        gps_error_std = 5  # Low error – open highway with good satellite visibility
+        gps_error_std = 4  # Low error – This gives around 5 meters of error based on gps.gov
         simulation_type = 'Route_90'
     elif sim == 2:
-        gps_error_std = 8  # Medium error – mid-sized city with some signal obstruction
+        gps_error_std = 7  # Medium error –This gives around 9 meters of error; mid-sized city with some signal obstruction
         simulation_type = 'Haifa'
     elif sim == 3:
-        gps_error_std = 12  # High error – dense urban area with significant multipath effects
+        gps_error_std = 12  # High error – This gives around 15 meters of error ;dense urban area with significant multipath effects
         simulation_type = 'Manhattan'
     else:
         raise ValueError(f"Invalid simulation type: {sim}")
@@ -87,6 +88,7 @@ if __name__ == "__main__":
 
     # Step 3: Set simulation parameters
     simulation_params = {
+        'num_vehicles_to_track': 1,
         'gps_refresh_rate': 10,  # the rate at which the GPS is updated
         'dsrc_refresh_rate': 2,
         'ins_refresh_rate': 1,
@@ -101,26 +103,54 @@ if __name__ == "__main__":
 
     # initialize the GPS error model
     gps_error_model = GPSErrorModel(simulation_params['gps_error_model_std'])
+    neighbors_error_model = GPSErrorModel(simulation_params['gps_error_model_std'] / 4)
     comm_error_model = CommunicationDistanceErrorModel(simulation_params['communication_error_model_std'],
                                                        simulation_params['systematic_bias'])
 
-    simulation_manager = SimulationManager(simulation_params, simulation_type, gps_error_model, comm_error_model, gps_outage)
+    simulation_manager = SimulationManager(simulation_params, simulation_type,
+                                           gps_error_model, neighbors_error_model, comm_error_model, gps_outage)
 
-    ##TODO change the specific_car_id method to be more dynamic
-    main_vehicle = simulation_manager.run_simulation(simulation_path)
+    vehicle_objs = simulation_manager.run_simulation(simulation_path)
+    ekf_objs = []
 
-    ##TODO analyze results and print them
-    dsrc_manager = DSRCPositionEstimator()
-    initial_step = main_vehicle.position_history[0]
-    ekf = VehicleEKF(dsrc_manager, initial_step, use_dsrc)
+    for veh in vehicle_objs:
+        dsrc_manager = DSRCPositionEstimator()
+        ekf = VehicleEKF(veh.id, dsrc_manager, veh.position_history[0], use_dsrc)
+        for step_record in veh.position_history:
+            ekf.process_step(step_record)
+        ekf_objs.append(ekf)
 
-    for step_record in main_vehicle.position_history:
-        ekf.process_step(step_record)
+    frames = []
+    for ekf in ekf_objs:
+        # make a Date frame of processed data for each tracked vehicle
+        df = pd.DataFrame(ekf.history)
+        df["veh_id"] = ekf.vehicle_id
+        frames.append(df)
 
-    plotter = PlottingManager(ekf, net_path, use_dsrc, simulation_manager.gps_outage)
-    plotter.plot_trajectory_comparison()
-    plotter.plot_error_comparison()
-    plotter.plot_cumulative_distribution()
+    all_steps = pd.concat(frames, ignore_index=True)
+
+    error_cols = ["gps_error", "ekf_error", "dsrc_error"]
+    existing_cols = [c for c in error_cols if c in all_steps]
+
+    agg = (all_steps.groupby("step")[existing_cols].agg(['mean', 'std', 'count']))
+
+    mean_step = agg.xs('mean', level=1, axis=1)
+    std_step = agg.xs('std', level=1, axis=1)
+    count_step = agg.xs('count', level=1, axis=1)
+
+    plotter = PlottingManager(mean_step, std_step, count_step,
+                              all_steps,
+                              net_file=net_path,
+                              dsrc_flag=use_dsrc,
+                              gps_outage=simulation_manager.gps_outage)
+    for i in range(3):
+        try:
+            plotter.plot_trajectory_comparison(vehicle_objs[i].id, ekf_objs[i])
+        except IndexError:
+            print(f"Not enough vehicles to plot trajectory comparison for vehicle {i+1}")
+    plotter.plot_mean_error_with_band()
+    plotter.plot_error_cdf()
+    plotter.plot_summary_table()
     print("Analysis complete")
 
     # Note: data_sequence should be a list of vehicle_data dictionaries as shown in your format
