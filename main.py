@@ -13,13 +13,13 @@ if __name__ == "__main__":
     sim = int(input("Enter your choice (1-3): "))
 
     if sim == 1:
-        gps_error_std = 4  # Low error – This gives around 5 meters of error based on gps.gov
+        gps_error_std = 5  # Low error – open highway with good satellite visibility
         simulation_type = 'Route_90'
     elif sim == 2:
-        gps_error_std = 7  # Medium error –This gives around 9 meters of error; mid-sized city with some signal obstruction
+        gps_error_std = 8  # Medium error – mid-sized city with some signal obstruction
         simulation_type = 'Haifa'
     elif sim == 3:
-        gps_error_std = 12  # High error – This gives around 15 meters of error ;dense urban area with significant multipath effects
+        gps_error_std = 12  # High error – dense urban area with significant multipath effects
         simulation_type = 'Manhattan'
     else:
         raise ValueError(f"Invalid simulation type: {sim}")
@@ -88,7 +88,7 @@ if __name__ == "__main__":
 
     # Step 3: Set simulation parameters
     simulation_params = {
-        'num_vehicles_to_track': 1,
+        'num_vehicles_to_track': 100,
         'gps_refresh_rate': 10,  # the rate at which the GPS is updated
         'dsrc_refresh_rate': 2,
         'ins_refresh_rate': 1,
@@ -144,10 +144,7 @@ if __name__ == "__main__":
                               dsrc_flag=use_dsrc,
                               gps_outage=simulation_manager.gps_outage)
     for i in range(3):
-        try:
-            plotter.plot_trajectory_comparison(vehicle_objs[i].id, ekf_objs[i])
-        except IndexError:
-            print(f"Not enough vehicles to plot trajectory comparison for vehicle {i+1}")
+        plotter.plot_trajectory_comparison(vehicle_objs[i].id, ekf_objs[i])
     plotter.plot_mean_error_with_band()
     plotter.plot_error_cdf()
     plotter.plot_summary_table()
